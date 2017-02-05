@@ -10,7 +10,7 @@ Based on other libraries:
 - https://github.com/AeonLucid/POGOLib/tree/develop
 - https://github.com/Grover-c13/PokeGOAPI-Java
 
-Thanks for all theose maintainers
+Thanks for all those maintainers
 
 ## Usage
 
