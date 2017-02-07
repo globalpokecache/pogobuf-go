@@ -8,8 +8,9 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/globalpokecache/POGOProtos-go"
+	"github.com/globalpokecache/pogobuf-go"
+	"github.com/golang/protobuf/proto"
 	"golang.org/x/net/context/ctxhttp"
 )
 
@@ -64,8 +65,13 @@ func (c *RPC) Request(ctx context.Context, endpoint string, requestEnvelope *pro
 		return responseEnvelope, raise(fmt.Sprintf("There was an error requesting the API: %s", err))
 	}
 	defer response.Body.Close()
+
+	if response.StatusCode == http.StatusForbidden {
+		return nil, pogobuf.ErrServerDeniedRequest
+	}
+
 	if response.StatusCode != 200 {
-		return responseEnvelope, raise(fmt.Sprintf("Status code was %d, expected 200", response.StatusCode))
+		return responseEnvelope, pogobuf.ErrServerUnexpectedResponse
 	}
 
 	// Read the response
@@ -77,8 +83,13 @@ func (c *RPC) Request(ctx context.Context, endpoint string, requestEnvelope *pro
 	proto.Unmarshal(responseBytes, responseEnvelope)
 
 	debugProto("ResponseEnvelope", responseEnvelope)
+
 	if responseEnvelope.StatusCode == protos.ResponseEnvelope_BAD_REQUEST {
 		return responseEnvelope, raise("Bad request")
+	}
+
+	if responseEnvelope.StatusCode == protos.ResponseEnvelope_INVALID_AUTH_TOKEN {
+		return responseEnvelope, pogobuf.ErrAuthExpired
 	}
 
 	if responseEnvelope.StatusCode == protos.ResponseEnvelope_INVALID_PLATFORM_REQUEST {

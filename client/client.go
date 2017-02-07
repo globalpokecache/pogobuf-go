@@ -5,9 +5,11 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"github.com/golang/protobuf/proto"
 	"github.com/globalpokecache/POGOProtos-go"
+	"github.com/globalpokecache/pogobuf-go"
 	"github.com/globalpokecache/pogobuf-go/hash"
+	"github.com/globalpokecache/pogobuf-go/helpers"
+	"github.com/golang/protobuf/proto"
 	"time"
 )
 
@@ -94,33 +96,55 @@ func (c *Instance) SetPosition(lat, lon, accu, alt float64) {
 	c.player.Altitude = alt
 }
 
-func (c *Instance) Init(ctx context.Context) error {
-	var response *protos.ResponseEnvelope
-	c.Call(ctx)
-
+func (c *Instance) buildCommon() []*protos.Request {
 	getPlayer, _ := c.GetPlayerRequest("", "", "")
 	getHatchedEggs, _ := c.GetHatchedEggsRequest()
 	getInventory, _ := c.GetInventoryRequest()
 	checkAwarded, _ := c.CheckAwardedBadgesRequest()
+	checkChallenge, _ := c.CheckChallengeRequest()
 	downloadSettings, _ := c.DownloadSettingsRequest()
 
-	response, err := c.Call(ctx,
+	return []*protos.Request{
 		getPlayer,
 		getHatchedEggs,
 		getInventory,
 		checkAwarded,
+		checkChallenge,
 		downloadSettings,
+	}
+}
+
+func (c *Instance) Init(ctx context.Context) error {
+	var response *protos.ResponseEnvelope
+	c.Call(ctx)
+
+	response, err := c.Call(ctx,
+		c.buildCommon()...,
 	)
 	if err != nil {
+		return err
+	}
+
+	if err == pogobuf.ErrAuthExpired {
+		return err
+	}
+
+	if len(response.Returns) < 6 {
 		return errors.New("Failed to initialize real player client")
 	}
 
-	if len(response.Returns) < 5 {
-		return errors.New("Failed to initialize real player client")
+	var challengeResponse protos.CheckChallengeResponse
+	err = proto.Unmarshal(response.Returns[4], &challengeResponse)
+	if err != nil {
+		return fmt.Errorf("Failed to call DOWNLOAD_SETTINGS: %s", err)
+	}
+
+	if challengeResponse.ShowChallenge {
+		return fmt.Errorf("CAPTCHA|%s", challengeResponse.ChallengeUrl)
 	}
 
 	var downloadResponse protos.DownloadSettingsResponse
-	err = proto.Unmarshal(response.Returns[4], &downloadResponse)
+	err = proto.Unmarshal(response.Returns[5], &downloadResponse)
 	if err != nil {
 		return fmt.Errorf("Failed to call DOWNLOAD_SETTINGS: %s", err)
 	}
@@ -128,4 +152,50 @@ func (c *Instance) Init(ctx context.Context) error {
 	c.options.MapObjectsMinDelay = time.Duration(downloadResponse.GetSettings().GetMapSettings().GetMapObjectsMinRefreshSeconds) * time.Second
 
 	return nil
+}
+
+func (c *Instance) GetMap(ctx context.Context) (*protos.GetMapObjectsResponse, error) {
+	cells := helpers.GetCellsFromRadius(c.player.Latitude, c.player.Longitude, 210, 17)
+
+	request, err := c.GetMapObjectsRequest(cells, make([]int64, len(cells)))
+	if err != nil {
+		return nil, err
+	}
+
+	requests := c.buildCommon()
+	requests = append(requests, request)
+
+	var response *protos.ResponseEnvelope
+	response, err = c.Call(ctx, requests...)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(response.Returns) < len(requests) {
+		return nil, errors.New("Server not accepted this request")
+	}
+
+	var challengeResponse protos.CheckChallengeResponse
+	err = proto.Unmarshal(response.Returns[4], &challengeResponse)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse CHECK_CHALLENGE: %s", err)
+	}
+
+	if challengeResponse.ShowChallenge {
+		return nil, fmt.Errorf("CAPTCHA|%s", challengeResponse.ChallengeUrl)
+	}
+
+	var getMapObjects protos.GetMapObjectsResponse
+	err = proto.Unmarshal(response.Returns[len(requests)-1], &getMapObjects)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to parse GET_MAP_OBJECTS: %s", err)
+	}
+
+	debugProto("MapObjects", &getMapObjects)
+
+	return &getMapObjects, nil
+}
+
+func (c *Instance) SetAuthToken(authToken string) {
+	c.options.AuthToken = authToken
 }

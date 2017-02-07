@@ -23,6 +23,7 @@ type BuddyKey struct {
 	Key       string
 	RPM       int
 	Used      int
+	Count     int
 	NextReset time.Time
 	Invalid   bool
 	Expired   bool
@@ -78,13 +79,42 @@ func NewProvider(apiVersion int) (*Provider, error) {
 
 type byRPM []*BuddyKey
 
-func (a byRPM) Len() int           { return len(a) }
-func (a byRPM) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
-func (a byRPM) Less(i, j int) bool { return a[i].RPM < a[j].RPM }
+func (a byRPM) Len() int      { return len(a) }
+func (a byRPM) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a byRPM) Less(i, j int) bool {
+	if a[i].RPM > a[j].RPM {
+		return true
+	} else if a[i].RPM == a[j].RPM {
+		return a[i].Count > a[j].Count
+	}
+	return false
+}
+
+func (p *Provider) GetKeys() []interface{} {
+	p.keysMutex.Lock()
+	defer p.keysMutex.Unlock()
+
+	keys := []interface{}{}
+	for _, key := range p.keys {
+		keys = append(keys, *key)
+	}
+	return keys
+}
 
 func (p *Provider) AddKey(key string) error {
 	p.keysMutex.Lock()
 	defer p.keysMutex.Unlock()
+
+	index := -1
+	for i, k := range p.keys {
+		if k.Key == key {
+			index = i
+			break
+		}
+	}
+	if index != -1 {
+		return errors.New("Key already added")
+	}
 
 	p.keys = append(p.keys, &BuddyKey{
 		Key:  key,
@@ -97,12 +127,33 @@ func (p *Provider) AddKey(key string) error {
 	return nil
 }
 
+func (p *Provider) DelKey(key string) error {
+	p.keysMutex.Lock()
+	defer p.keysMutex.Unlock()
+
+	index := -1
+	for i, k := range p.keys {
+		if k.Key == key {
+			index = i
+			break
+		}
+	}
+	if index == -1 {
+		return errors.New("Key not found")
+	}
+	p.keys = append(p.keys[:index], p.keys[index+1:]...)
+
+	sort.Sort(byRPM(p.keys))
+
+	return nil
+}
+
 func (p *Provider) ApiURL() string {
 	v := fmt.Sprintf("0.%.1f", float64(p.version)/100)
 	return fmt.Sprintf("http://hashing.pogodev.io/%s", versions[v])
 }
 
-func (p *Provider) GetAvailableKey() (BuddyKey, error) {
+func (p *Provider) GetAvailableKey() (*BuddyKey, error) {
 	p.keysMutex.Lock()
 	defer p.keysMutex.Unlock()
 
@@ -110,12 +161,13 @@ func (p *Provider) GetAvailableKey() (BuddyKey, error) {
 	var found bool
 	debug("Searching for available key")
 	for i := 0; i < len(p.keys); i++ {
-		key = p.keys[0]
+		key = p.keys[i]
 
-		if key.NextReset.Before(time.Now()) {
+		if key.NextReset.Before(time.Now().UTC()) {
 			debug("Resetting key: %s", key.Key)
-			key.NextReset = time.Now()
+			key.NextReset = time.Now().UTC().Add(1 * time.Minute)
 			key.Used = 0
+			key.Count = 0
 		}
 
 		if !key.Expired && !key.Invalid && key.Used < key.RPM {
@@ -128,23 +180,25 @@ func (p *Provider) GetAvailableKey() (BuddyKey, error) {
 	}
 	if !found {
 		debug("No valid key found")
-		return BuddyKey{}, ErrNoAvailableKey
+		return nil, ErrNoAvailableKey
 	}
 
 	key.Used++
-	return *key, nil
+	key.Count++
+	return key, nil
 }
 
-func (p *Provider) ReturnKey(k *BuddyKey) {
-	p.keysMutex.Lock()
-	defer p.keysMutex.Unlock()
-	for i, key := range p.keys {
-		if key.Key == k.Key {
-			p.keys[i] = k
-			break
-		}
-	}
-}
+// func (p *Provider) ReturnKey(k *BuddyKey) {
+// 	p.keysMutex.Lock()
+// 	defer p.keysMutex.Unlock()
+// 	for i, key := range p.keys {
+// 		if key.Key == k.Key {
+// 			p.keys[i] = k
+// 			break
+// 		}
+// 	}
+// 	sort.Sort(byRPM(p.keys))
+// }
 
 func (p *Provider) hashRequest(hashReq HashRequest, key *BuddyKey) (HashResponse, error) {
 	var hresp HashResponse
@@ -170,20 +224,30 @@ func (p *Provider) hashRequest(hashReq HashRequest, key *BuddyKey) (HashResponse
 		return hresp, fmt.Errorf("Failed to do request: %s", err)
 	}
 
-	if resp.Header.Get("x-maxrequestcount") != "" {
-		rateperiodend, _ := strconv.ParseInt(resp.Header.Get("x-rateperiodend"), 10, 64)
-		maxrequestcount, _ := strconv.ParseInt(resp.Header.Get("x-maxrequestcount"), 10, 64)
-		raterequestsremaining, _ := strconv.ParseInt(resp.Header.Get("x-raterequestsremaining"), 10, 64)
-		authtokenexpiration, _ := strconv.ParseInt(resp.Header.Get("x-authtokenexpiration"), 10, 64)
+	if resp.Header.Get("X-Maxrequestcount") != "" {
+		// rateperiodend, _ := strconv.ParseInt(resp.Header.Get("X-Rateperiodend"), 10, 64)
+		maxrequestcount, _ := strconv.ParseInt(resp.Header.Get("X-Maxrequestcount"), 10, 64)
+		remaining, _ := strconv.ParseInt(resp.Header.Get("X-Raterequestsremaining"), 10, 64)
+		authtokenexpiration, _ := strconv.ParseInt(resp.Header.Get("X-Authtokenexpiration"), 10, 64)
 		debug("Updating key info: %s", key.Key)
+		debug("Received header:", resp.Header)
 
 		if time.Unix(authtokenexpiration, -1).Before(time.Now()) {
 			key.Expired = true
 		}
 
-		key.NextReset = time.Unix(rateperiodend, -1)
 		key.RPM = int(maxrequestcount)
-		key.Used = int(maxrequestcount - raterequestsremaining)
+		// next := time.Unix(rateperiodend, -1).UTC()
+		used := key.RPM - int(remaining)
+		// if next.After(key.NextReset) {
+		// 	key.NextReset = next
+		// 	key.Used = 0
+		// 	key.Count = 0
+		// }
+
+		if used > key.Used {
+			key.Used = used
+		}
 	}
 
 	debug("Server response code: %s", resp.Status)
@@ -210,7 +274,7 @@ func (p *Provider) Hash(authTicket, sessionData []byte, latitude, longitude, acc
 	baseAuthTicket := base64.StdEncoding.EncodeToString(authTicket)
 	baseSessionData := base64.StdEncoding.EncodeToString(sessionData)
 
-	var reqBases []string
+	reqBases := []string{}
 	for _, b := range requests {
 		reqBases = append(reqBases, base64.StdEncoding.EncodeToString(b))
 	}
@@ -227,21 +291,20 @@ func (p *Provider) Hash(authTicket, sessionData []byte, latitude, longitude, acc
 
 	var err error
 	var hashResp HashResponse
-	var key BuddyKey
+	var key *BuddyKey
 
 	var success bool
 	for i := 0; i < len(p.keys); i++ {
 		key, err = p.GetAvailableKey()
-		debug("Found key: %s", key.Key)
 		if err != nil {
 			return 0, 0, []uint64{0}, err
 		}
+		debug("Found key: %s", key.Key)
 		if Debug {
 			d, _ := json.MarshalIndent(hashReq, "", "\t")
 			debug("Sending hash request: %s", d)
 		}
-		hashResp, err = p.hashRequest(hashReq, &key)
-		p.ReturnKey(&key)
+		hashResp, err = p.hashRequest(hashReq, key)
 		if err == nil {
 			success = true
 			if Debug {

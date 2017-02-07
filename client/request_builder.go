@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/golang/protobuf/proto"
 	"github.com/globalpokecache/POGOProtos-go"
 	"github.com/globalpokecache/pogobuf-go/pcrypt"
+	"github.com/golang/protobuf/proto"
 	"math"
 	"time"
 )
@@ -96,6 +96,7 @@ func (c *Instance) Call(ctx context.Context, requests ...*protos.Request) (*prot
 
 		requestsBytes := make([][]byte, len(requests))
 		for idx, request := range requests {
+			debugProto(fmt.Sprintf("Request(%d)", idx), request)
 			req, err := proto.Marshal(request)
 			if err != nil {
 				return nil, err

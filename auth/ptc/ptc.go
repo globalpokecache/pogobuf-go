@@ -30,11 +30,15 @@ type loginRequest struct {
 
 // Provider contains data about and manages the session with the Pokémon Trainer's Club
 type Provider struct {
-	http *http.Client
 }
 
 // NewProvider constructs a Pokémon Trainer's Club auth provider instance
 func NewProvider() *Provider {
+	return &Provider{}
+}
+
+// Login retrieves an access token from the Pokémon Trainer's Club
+func (p *Provider) Login(ctx context.Context, username, password string) (string, error) {
 	options := &cookiejar.Options{}
 	jar, _ := cookiejar.New(options)
 	httpClient := &http.Client{
@@ -44,17 +48,10 @@ func NewProvider() *Provider {
 		},
 	}
 
-	return &Provider{
-		http: httpClient,
-	}
-}
-
-// Login retrieves an access token from the Pokémon Trainer's Club
-func (p *Provider) Login(ctx context.Context, username, password string) (string, error) {
 	req1, _ := http.NewRequest("GET", loginURL, nil)
 	req1.Header.Set("User-Agent", "pokemongo/1 CFNetwork/808.2.16 Darwin/16.3.0")
 
-	resp1, err1 := ctxhttp.Do(ctx, p.http, req1)
+	resp1, err1 := ctxhttp.Do(ctx, httpClient, req1)
 	if err1 != nil {
 		return "", errors.New("Could not start login process, the website might be down")
 	}
@@ -78,22 +75,26 @@ func (p *Provider) Login(ctx context.Context, username, password string) (string
 	req2.Header.Set("User-Agent", "pokemongo/1 CFNetwork/808.2.16 Darwin/16.3.0")
 	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp2, err2 := ctxhttp.Do(ctx, p.http, req2)
+	resp2, err2 := ctxhttp.Do(ctx, httpClient, req2)
 	if _, ok2 := err2.(*url.Error); !ok2 {
+		if resp2.Body != nil {
+			defer resp2.Body.Close()
+			body2, _ := ioutil.ReadAll(resp2.Body)
+			var respBody loginRequest
+			json.Unmarshal(body2, &respBody)
+			resp2.Body.Close()
 
-		defer resp2.Body.Close()
-		body2, _ := ioutil.ReadAll(resp2.Body)
-		var respBody loginRequest
-		json.Unmarshal(body2, &respBody)
-		resp2.Body.Close()
-
-		if len(respBody.Errors) > 0 {
-			return "", errors.New(respBody.Errors[0])
+			if len(respBody.Errors) > 0 {
+				return "", errors.New(respBody.Errors[0])
+			}
 		}
 
 		return "", errors.New("Could not request authorization")
 	}
 
+	if resp2.Header == nil {
+		return "", errors.New("Could not request authorization")
+	}
 	location, _ := url.Parse(resp2.Header.Get("Location"))
 	ticket := location.Query().Get("ticket")
 
@@ -110,7 +111,7 @@ func (p *Provider) Login(ctx context.Context, username, password string) (string
 	req3.Header.Set("User-Agent", "pokemongo/1 CFNetwork/808.2.16 Darwin/16.3.0")
 	req3.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp3, err3 := ctxhttp.Do(ctx, p.http, req3)
+	resp3, err3 := ctxhttp.Do(ctx, httpClient, req3)
 	if err3 != nil {
 		return "", errors.New("Could not authorize code")
 	}

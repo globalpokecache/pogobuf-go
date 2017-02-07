@@ -4,8 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/golang/protobuf/proto"
 	"github.com/globalpokecache/POGOProtos-go"
+	"github.com/golang/protobuf/proto"
 )
 
 func (c *Instance) DownloadSettingsRequest() (*protos.Request, error) {
@@ -289,4 +289,80 @@ func (c *Instance) GetMapObjects(ctx context.Context, cellIDs []uint64, sinceTim
 	debugProto("MapObjects", &getMapObjects)
 
 	return &getMapObjects, nil
+}
+
+func (c *Instance) CheckChallengeRequest() (*protos.Request, error) {
+	msg, err := proto.Marshal(&protos.CheckChallengeMessage{})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create CHECK_CHALLENGE: %s", err)
+	}
+
+	return &protos.Request{
+		RequestType:    protos.RequestType_CHECK_CHALLENGE,
+		RequestMessage: msg,
+	}, nil
+}
+
+func (c *Instance) CheckChallenge(ctx context.Context) (*protos.CheckChallengeResponse, error) {
+	request, err := c.CheckChallengeRequest()
+	if err != nil {
+		return nil, err
+	}
+
+	var response *protos.ResponseEnvelope
+	response, err = c.Call(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(response.Returns) == 0 {
+		return nil, errors.New("Server not accepted this request")
+	}
+
+	var checkChallange protos.CheckChallengeResponse
+	err = proto.Unmarshal(response.Returns[0], &checkChallange)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to call CHECK_CHALLENGE: %s", err)
+	}
+
+	return &checkChallange, nil
+}
+
+func (c *Instance) VerifyChallengeRequest(token string) (*protos.Request, error) {
+	msg, err := proto.Marshal(&protos.VerifyChallengeMessage{
+		Token: token,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create VERIFY_CHALLENGE: %s", err)
+	}
+
+	return &protos.Request{
+		RequestType:    protos.RequestType_VERIFY_CHALLENGE,
+		RequestMessage: msg,
+	}, nil
+}
+
+func (c *Instance) VerifyChallenge(ctx context.Context, token string) (*protos.VerifyChallengeResponse, error) {
+	request, err := c.VerifyChallengeRequest(token)
+	if err != nil {
+		return nil, err
+	}
+
+	var response *protos.ResponseEnvelope
+	response, err = c.Call(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(response.Returns) == 0 {
+		return nil, errors.New("Server not accepted this request")
+	}
+
+	var verifyChallange protos.VerifyChallengeResponse
+	err = proto.Unmarshal(response.Returns[0], &verifyChallange)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to call VERIFY_CHALLENGE: %s", err)
+	}
+
+	return &verifyChallange, nil
 }

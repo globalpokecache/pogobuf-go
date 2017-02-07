@@ -7,6 +7,8 @@ import (
 
 type Provider interface {
 	AddKey(string) error
+	DelKey(string) error
+	GetKeys() []interface{}
 	Hash(authTicket, sessionData []byte, latitude, longitude, accuracy float64, timestamp uint64, requests [][]byte) (uint32, uint32, []uint64, error)
 	SetDebug(bool)
 }
