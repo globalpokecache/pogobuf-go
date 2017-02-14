@@ -50,7 +50,7 @@ var (
 	ErrKeyPassedLimit  = errors.New("Key passed the limit")
 	ErrBadRequest      = errors.New("Something wrong in the request")
 	ErrInvalidKey      = errors.New("Invalid or expired key")
-	ErrNoAvailableKey  = errors.New("No available key")
+	ErrNoAvailableKey  = errors.New("No hash key is available")
 )
 
 var (
@@ -188,18 +188,6 @@ func (p *Provider) GetAvailableKey() (*BuddyKey, error) {
 	return key, nil
 }
 
-// func (p *Provider) ReturnKey(k *BuddyKey) {
-// 	p.keysMutex.Lock()
-// 	defer p.keysMutex.Unlock()
-// 	for i, key := range p.keys {
-// 		if key.Key == k.Key {
-// 			p.keys[i] = k
-// 			break
-// 		}
-// 	}
-// 	sort.Sort(byRPM(p.keys))
-// }
-
 func (p *Provider) hashRequest(hashReq HashRequest, key *BuddyKey) (HashResponse, error) {
 	var hresp HashResponse
 
@@ -237,13 +225,7 @@ func (p *Provider) hashRequest(hashReq HashRequest, key *BuddyKey) (HashResponse
 		}
 
 		key.RPM = int(maxrequestcount)
-		// next := time.Unix(rateperiodend, -1).UTC()
 		used := key.RPM - int(remaining)
-		// if next.After(key.NextReset) {
-		// 	key.NextReset = next
-		// 	key.Used = 0
-		// 	key.Count = 0
-		// }
 
 		if used > key.Used {
 			key.Used = used
