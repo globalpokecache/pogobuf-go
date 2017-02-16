@@ -48,6 +48,90 @@ func (c *Instance) DownloadRemoteConfigVersion(ctx context.Context, platform pro
 	return &downloadRemote, nil
 }
 
+func (c *Instance) GetAssetDigestRequest(platform protos.Platform, manufacturer, model, locale string, appVersion int) (*protos.Request, error) {
+	msg, err := proto.Marshal(&protos.GetAssetDigestMessage{
+		Platform:           protos.Platform_IOS,
+		DeviceManufacturer: "",
+		DeviceModel:        "",
+		Locale:             "",
+		AppVersion:         uint32(appVersion),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create GET_ASSET_DIGEST: %s", err)
+	}
+
+	return &protos.Request{
+		RequestType:    protos.RequestType_GET_ASSET_DIGEST,
+		RequestMessage: msg,
+	}, nil
+}
+
+func (c *Instance) GetAssetDigest(ctx context.Context, platform protos.Platform, manufacturer, model, locale string, appVersion int) (*protos.GetAssetDigestResponse, error) {
+	request, err := c.GetAssetDigestRequest(platform, manufacturer, model, locale, appVersion)
+	if err != nil {
+		return nil, err
+	}
+
+	var response *protos.ResponseEnvelope
+	response, err = c.Call(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(response.Returns) == 0 {
+		return nil, errors.New("Server not accepted this request")
+	}
+
+	var getAssetDigest protos.GetAssetDigestResponse
+	err = proto.Unmarshal(response.Returns[0], &getAssetDigest)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to call GET_ASSET_DIGEST: %s", err)
+	}
+
+	return &getAssetDigest, nil
+}
+
+func (c *Instance) DownloadItemTemplatesRequest(paginate bool, offset int32, ts uint64) (*protos.Request, error) {
+	msg, err := proto.Marshal(&protos.DownloadItemTemplatesMessage{
+		Paginate:      paginate,
+		PageOffset:    offset,
+		PageTimestamp: ts,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create DOWNLOAD_ITEM_TEMPLATES: %s", err)
+	}
+
+	return &protos.Request{
+		RequestType:    protos.RequestType_DOWNLOAD_ITEM_TEMPLATES,
+		RequestMessage: msg,
+	}, nil
+}
+
+func (c *Instance) DownloadItemTemplates(ctx context.Context, paginate bool, offset int32, ts uint64) (*protos.DownloadItemTemplatesResponse, error) {
+	request, err := c.DownloadItemTemplatesRequest(paginate, offset, ts)
+	if err != nil {
+		return nil, err
+	}
+
+	var response *protos.ResponseEnvelope
+	response, err = c.Call(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(response.Returns) == 0 {
+		return nil, errors.New("Server not accepted this request")
+	}
+
+	var downloadItemTemplates protos.DownloadItemTemplatesResponse
+	err = proto.Unmarshal(response.Returns[0], &downloadItemTemplates)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to call DOWNLOAD_ITEM_TEMPLATES: %s", err)
+	}
+
+	return &downloadItemTemplates, nil
+}
+
 func (c *Instance) DownloadSettingsRequest() (*protos.Request, error) {
 	msg, err := proto.Marshal(&protos.DownloadSettingsMessage{
 		Hash: downloadSettingsHash,
@@ -136,7 +220,7 @@ func (c *Instance) GetPlayerRequest(country, language, timezone string) (*protos
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("Failed to create PLAYER_UPDATE: %s", err)
+		return nil, fmt.Errorf("Failed to create GET_PLAYER: %s", err)
 	}
 
 	return &protos.Request{
@@ -207,8 +291,10 @@ func (c *Instance) GetHatchedEggs(ctx context.Context) (*protos.GetHatchedEggsRe
 	return &getHatchedEggs, nil
 }
 
-func (c *Instance) GetInventoryRequest() (*protos.Request, error) {
-	msg, err := proto.Marshal(&protos.GetInventoryMessage{})
+func (c *Instance) GetInventoryRequest(last int64) (*protos.Request, error) {
+	msg, err := proto.Marshal(&protos.GetInventoryMessage{
+		LastTimestampMs: last,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create GET_INVENTORY: %s", err)
 	}
@@ -219,8 +305,8 @@ func (c *Instance) GetInventoryRequest() (*protos.Request, error) {
 	}, nil
 }
 
-func (c *Instance) GetInventory(ctx context.Context) (*protos.GetInventoryResponse, error) {
-	request, err := c.GetInventoryRequest()
+func (c *Instance) GetInventory(ctx context.Context, last int64) (*protos.GetInventoryResponse, error) {
+	request, err := c.GetInventoryRequest(last)
 	if err != nil {
 		return nil, err
 	}
@@ -647,4 +733,329 @@ func (c *Instance) FortSearch(ctx context.Context, fortid string, lat, lon float
 	}
 
 	return &search, nil
+}
+
+func (c *Instance) LevelUpRewardsRequest(level int32) (*protos.Request, error) {
+	msg, err := proto.Marshal(&protos.LevelUpRewardsMessage{
+		Level: level,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create LEVEL_UP_REWARDS: %s", err)
+	}
+
+	return &protos.Request{
+		RequestType:    protos.RequestType_LEVEL_UP_REWARDS,
+		RequestMessage: msg,
+	}, nil
+}
+
+func (c *Instance) LevelUpRewards(ctx context.Context, level int32) (*protos.LevelUpRewardsResponse, error) {
+	request, err := c.LevelUpRewardsRequest(level)
+	if err != nil {
+		return nil, err
+	}
+
+	var response *protos.ResponseEnvelope
+	response, err = c.Call(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(response.Returns) == 0 {
+		return nil, errors.New("Server not accepted this request")
+	}
+
+	var levelup protos.LevelUpRewardsResponse
+	err = proto.Unmarshal(response.Returns[0], &levelup)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to call GET_PLAYER_PROFILE: %s", err)
+	}
+
+	return &levelup, nil
+}
+
+func (c *Instance) GetPlayerProfileRequest(name string) (*protos.Request, error) {
+	msg, err := proto.Marshal(&protos.GetPlayerProfileMessage{
+		PlayerName: name,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create GET_PLAYERP_PROFILE: %s", err)
+	}
+
+	return &protos.Request{
+		RequestType:    protos.RequestType_GET_PLAYER_PROFILE,
+		RequestMessage: msg,
+	}, nil
+}
+
+func (c *Instance) GetPlayerProfile(ctx context.Context, name string) (*protos.GetPlayerProfileResponse, error) {
+	request, err := c.GetPlayerProfileRequest(name)
+	if err != nil {
+		return nil, err
+	}
+
+	var response *protos.ResponseEnvelope
+	response, err = c.Call(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(response.Returns) == 0 {
+		return nil, errors.New("Server not accepted this request")
+	}
+
+	var playerProfile protos.GetPlayerProfileResponse
+	err = proto.Unmarshal(response.Returns[0], &playerProfile)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to call GET_PLAYER_PROFILE: %s", err)
+	}
+
+	return &playerProfile, nil
+}
+
+func (c *Instance) RegisterBackgroundDeviceRequest(device string, devicetype string) (*protos.Request, error) {
+	msg, err := proto.Marshal(&protos.RegisterBackgroundDeviceMessage{
+		DeviceId:   device,
+		DeviceType: devicetype,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create REGISTER_BACKGROUND_DEVICE: %s", err)
+	}
+
+	return &protos.Request{
+		RequestType:    protos.RequestType_REGISTER_BACKGROUND_DEVICE,
+		RequestMessage: msg,
+	}, nil
+}
+
+func (c *Instance) RegisterBackgroundDevice(ctx context.Context, device string, devicetype string) (*protos.RegisterBackgroundDeviceResponse, error) {
+	request, err := c.RegisterBackgroundDeviceRequest(device, devicetype)
+	if err != nil {
+		return nil, err
+	}
+
+	var response *protos.ResponseEnvelope
+	response, err = c.Call(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(response.Returns) == 0 {
+		return nil, errors.New("Server not accepted this request")
+	}
+
+	var registerDevice protos.RegisterBackgroundDeviceResponse
+	err = proto.Unmarshal(response.Returns[0], &registerDevice)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to call REGISTER_BACKGROUND_DEVICE: %s", err)
+	}
+
+	return &registerDevice, nil
+}
+
+func (c *Instance) MarkTutorialCompleteRequest(ids []protos.TutorialState, sendMail, sendNotif bool) (*protos.Request, error) {
+	msg, err := proto.Marshal(&protos.MarkTutorialCompleteMessage{
+		TutorialsCompleted:    ids,
+		SendMarketingEmails:   sendMail,
+		SendPushNotifications: sendNotif,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create MARK_TUTORIAL_COMPLETE: %s", err)
+	}
+
+	return &protos.Request{
+		RequestType:    protos.RequestType_MARK_TUTORIAL_COMPLETE,
+		RequestMessage: msg,
+	}, nil
+}
+
+func (c *Instance) MarkTutorialComplete(ctx context.Context, ids []protos.TutorialState, sendMail, sendNotif bool) (*protos.MarkTutorialCompleteResponse, error) {
+	request, err := c.MarkTutorialCompleteRequest(ids, sendMail, sendNotif)
+	if err != nil {
+		return nil, err
+	}
+
+	var response *protos.ResponseEnvelope
+	response, err = c.Call(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(response.Returns) == 0 {
+		return nil, errors.New("Server not accepted this request")
+	}
+
+	var markTutorial protos.MarkTutorialCompleteResponse
+	err = proto.Unmarshal(response.Returns[0], &markTutorial)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to call MARK_TUTORIAL_COMPLETE: %s", err)
+	}
+
+	return &markTutorial, nil
+}
+
+func (c *Instance) SetAvatarRequest(skin, hair, shirt, pants, hat, shoes, avatar, eyes, backpack int) (*protos.Request, error) {
+	msg, err := proto.Marshal(&protos.SetAvatarMessage{
+		PlayerAvatar: &protos.PlayerAvatar{
+			Skin:     int32(skin),
+			Hair:     int32(hair),
+			Shirt:    int32(shirt),
+			Pants:    int32(pants),
+			Hat:      int32(hat),
+			Shoes:    int32(shoes),
+			Avatar:   int32(avatar),
+			Eyes:     int32(eyes),
+			Backpack: int32(backpack),
+		},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create SET_AVATAR: %s", err)
+	}
+
+	return &protos.Request{
+		RequestType:    protos.RequestType_SET_AVATAR,
+		RequestMessage: msg,
+	}, nil
+}
+
+func (c *Instance) SetAvatar(ctx context.Context, skin, hair, shirt, pants, hat, shoes, avatar, eyes, backpack int) (*protos.SetAvatarResponse, error) {
+	request, err := c.SetAvatarRequest(skin, hair, shirt, pants, hat, shoes, avatar, eyes, backpack)
+	if err != nil {
+		return nil, err
+	}
+
+	var response *protos.ResponseEnvelope
+	response, err = c.Call(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(response.Returns) == 0 {
+		return nil, errors.New("Server not accepted this request")
+	}
+
+	var setAvatar protos.SetAvatarResponse
+	err = proto.Unmarshal(response.Returns[0], &setAvatar)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to call SET_AVATAR: %s", err)
+	}
+
+	return &setAvatar, nil
+}
+
+func (c *Instance) GetDownloadURLsRequest(ids []string) (*protos.Request, error) {
+	msg, err := proto.Marshal(&protos.GetDownloadUrlsMessage{
+		AssetId: ids,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create GET_DOWNLOAD_URLS: %s", err)
+	}
+
+	return &protos.Request{
+		RequestType:    protos.RequestType_GET_DOWNLOAD_URLS,
+		RequestMessage: msg,
+	}, nil
+}
+
+func (c *Instance) GetDownloadURLs(ctx context.Context, ids []string) (*protos.GetDownloadUrlsResponse, error) {
+	request, err := c.GetDownloadURLsRequest(ids)
+	if err != nil {
+		return nil, err
+	}
+
+	var response *protos.ResponseEnvelope
+	response, err = c.Call(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(response.Returns) == 0 {
+		return nil, errors.New("Server not accepted this request")
+	}
+
+	var getDownloadURLs protos.GetDownloadUrlsResponse
+	err = proto.Unmarshal(response.Returns[0], &getDownloadURLs)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to call GET_DOWNLOAD_URLS: %s", err)
+	}
+
+	return &getDownloadURLs, nil
+}
+
+func (c *Instance) EncounterTutorialCompleteRequest(id int32) (*protos.Request, error) {
+	msg, err := proto.Marshal(&protos.EncounterTutorialCompleteMessage{
+		PokemonId: protos.PokemonId(id),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create ENCOUNTER_TUTORIAL_COMPLETE: %s", err)
+	}
+
+	return &protos.Request{
+		RequestType:    protos.RequestType_ENCOUNTER_TUTORIAL_COMPLETE,
+		RequestMessage: msg,
+	}, nil
+}
+
+func (c *Instance) EncounterTutorialComplete(ctx context.Context, id int32) (*protos.EncounterTutorialCompleteResponse, error) {
+	request, err := c.EncounterTutorialCompleteRequest(id)
+	if err != nil {
+		return nil, err
+	}
+
+	var response *protos.ResponseEnvelope
+	response, err = c.Call(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(response.Returns) == 0 {
+		return nil, errors.New("Server not accepted this request")
+	}
+
+	var encounter protos.EncounterTutorialCompleteResponse
+	err = proto.Unmarshal(response.Returns[0], &encounter)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to call ENCOUNTER_TUTORIAL_COMPLETE: %s", err)
+	}
+
+	return &encounter, nil
+}
+
+func (c *Instance) ClaimCodenameRequest(codename string) (*protos.Request, error) {
+	msg, err := proto.Marshal(&protos.ClaimCodenameMessage{
+		Codename: codename,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create CLAIM_CODENAME: %s", err)
+	}
+
+	return &protos.Request{
+		RequestType:    protos.RequestType_CLAIM_CODENAME,
+		RequestMessage: msg,
+	}, nil
+}
+
+func (c *Instance) ClaimCodename(ctx context.Context, codename string) (*protos.ClaimCodenameResponse, error) {
+	request, err := c.ClaimCodenameRequest(codename)
+	if err != nil {
+		return nil, err
+	}
+
+	var response *protos.ResponseEnvelope
+	response, err = c.Call(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(response.Returns) == 0 {
+		return nil, errors.New("Server not accepted this request")
+	}
+
+	var claim protos.ClaimCodenameResponse
+	err = proto.Unmarshal(response.Returns[0], &claim)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to call CLAIM_CODENAME: %s", err)
+	}
+
+	return &claim, nil
 }

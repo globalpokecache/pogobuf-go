@@ -86,110 +86,116 @@ func (c *Instance) Call(ctx context.Context, requests ...*protos.Request) (*prot
 		}
 	}
 
-	if c.hasTicket {
-		t := getTimestamp(time.Now())
+	t := getTimestamp(time.Now())
 
-		ticket, err := proto.Marshal(c.authTicket)
+	var ticket []byte
+	var err error
+	if c.hasTicket {
+		ticket, err = proto.Marshal(requestEnvelope.AuthTicket)
 		if err != nil {
 			return nil, errors.New("Failed to marshal authTicket")
 		}
-
-		requestsBytes := make([][]byte, len(requests))
-		for idx, request := range requests {
-			debugProto(fmt.Sprintf("Request(%d)", idx), request)
-			req, err := proto.Marshal(request)
-			if err != nil {
-				return nil, err
-			}
-			requestsBytes[idx] = req
-		}
-
-		locHash1, locHash2, requestHash, err := c.options.HashProvider.Hash(
-			ticket,
-			c.sessionHash,
-			requestEnvelope.Latitude,
-			requestEnvelope.Longitude,
-			requestEnvelope.Accuracy,
-			t,
-			requestsBytes,
-		)
+	} else {
+		ticket, err = proto.Marshal(requestEnvelope.AuthInfo)
 		if err != nil {
-			return nil, fmt.Errorf("Hash provider failed to hash: %s", err)
-		}
-
-		uk25, err := getUnk25(c.options.Version)
-		if err != nil {
-			return nil, err
-		}
-
-		signature := &protos.Signature{
-			RequestHash:         requestHash,
-			LocationHash1:       int32(locHash1),
-			LocationHash2:       int32(locHash2),
-			SessionHash:         c.sessionHash,
-			Timestamp:           t,
-			TimestampSinceStart: (t - getTimestamp(c.startedTime)),
-			Unknown25:           uk25,
-			ActivityStatus: &protos.Signature_ActivityStatus{
-				Stationary: true,
-			},
-			SensorInfo: []*protos.Signature_SensorInfo{
-				{
-					TimestampSnapshot:     getTimestamp(c.startedTime) + uint64(100+randInt(150)),
-					LinearAccelerationX:   -0.7 + randFloat()*1.4,
-					LinearAccelerationY:   -0.7 + randFloat()*1.4,
-					LinearAccelerationZ:   -0.7 + randFloat()*1.4,
-					RotationRateX:         0.7 * randFloat(),
-					RotationRateY:         0.8 * randFloat(),
-					RotationRateZ:         0.8 * randFloat(),
-					AttitudePitch:         -1.0 + randFloat()*2.0,
-					AttitudeRoll:          -1.0 + randFloat()*2.0,
-					AttitudeYaw:           -1.0 + randFloat()*2.0,
-					GravityX:              -1.0 + randFloat()*2.0,
-					GravityY:              -1.0 + randFloat()*2.0,
-					GravityZ:              -1.0 + randFloat()*2.0,
-					MagneticFieldAccuracy: -1,
-					Status:                3,
-				},
-			},
-		}
-
-		signature.LocationFix = buildLocationFixes(requestEnvelope, getTimestamp(c.startedTime))
-
-		if signature.TimestampSinceStart < 5000 {
-			signature.Timestamp = uint64(5000 + randInt(8000))
-		}
-
-		if c.options.SignatureInfo.DeviceInfo != nil {
-			signature.DeviceInfo = c.options.SignatureInfo.DeviceInfo
-		} else {
-			signature.DeviceInfo = GetRandomDevice()
-		}
-
-		debugProto("Signature", signature)
-
-		signatureProto, err := proto.Marshal(signature)
-		if err != nil {
-			return nil, errors.New("Failed to marshal the request signature")
-		}
-
-		requestMessage, err := proto.Marshal(&protos.SendEncryptedSignatureRequest{
-			EncryptedSignature: pcrypt.Encrypt(signatureProto, uint32(signature.TimestampSinceStart)),
-		})
-		if err != nil {
-			return nil, errors.New("Failed to marshal request message")
-		}
-
-		requestEnvelope.PlatformRequests = []*protos.RequestEnvelope_PlatformRequest{
-			{
-				Type:           protos.PlatformRequestType_SEND_ENCRYPTED_SIGNATURE,
-				RequestMessage: requestMessage,
-			},
+			return nil, errors.New("Failed to marshal authTicket")
 		}
 	}
 
+	requestsBytes := make([][]byte, len(requests))
+	for idx, request := range requests {
+		debugProto(fmt.Sprintf("Request(%d)", idx), request)
+		req, err := proto.Marshal(request)
+		if err != nil {
+			return nil, err
+		}
+		requestsBytes[idx] = req
+	}
+
+	locHash1, locHash2, requestHash, err := c.options.HashProvider.Hash(
+		ticket,
+		c.sessionHash,
+		requestEnvelope.Latitude,
+		requestEnvelope.Longitude,
+		requestEnvelope.Accuracy,
+		t,
+		requestsBytes,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("Hash provider failed to hash: %s", err)
+	}
+
+	uk25, err := getUnk25(c.options.Version)
+	if err != nil {
+		return nil, err
+	}
+
+	signature := &protos.Signature{
+		RequestHash:         requestHash,
+		LocationHash1:       int32(locHash1),
+		LocationHash2:       int32(locHash2),
+		SessionHash:         c.sessionHash,
+		Timestamp:           t,
+		TimestampSinceStart: (t - getTimestamp(c.startedTime)),
+		Unknown25:           uk25,
+		ActivityStatus: &protos.Signature_ActivityStatus{
+			Stationary: true,
+		},
+		SensorInfo: []*protos.Signature_SensorInfo{
+			{
+				TimestampSnapshot:     getTimestamp(c.startedTime) + uint64(100+randInt(150)),
+				LinearAccelerationX:   -0.7 + randFloat()*1.4,
+				LinearAccelerationY:   -0.7 + randFloat()*1.4,
+				LinearAccelerationZ:   -0.7 + randFloat()*1.4,
+				RotationRateX:         0.7 * randFloat(),
+				RotationRateY:         0.8 * randFloat(),
+				RotationRateZ:         0.8 * randFloat(),
+				AttitudePitch:         -1.0 + randFloat()*2.0,
+				AttitudeRoll:          -1.0 + randFloat()*2.0,
+				AttitudeYaw:           -1.0 + randFloat()*2.0,
+				GravityX:              -1.0 + randFloat()*2.0,
+				GravityY:              -1.0 + randFloat()*2.0,
+				GravityZ:              -1.0 + randFloat()*2.0,
+				MagneticFieldAccuracy: -1,
+				Status:                3,
+			},
+		},
+	}
+
+	signature.LocationFix = buildLocationFixes(requestEnvelope, getTimestamp(c.startedTime))
+
+	if signature.TimestampSinceStart < 5000 {
+		signature.Timestamp = uint64(5000 + randInt(8000))
+	}
+
+	if c.options.SignatureInfo.DeviceInfo != nil {
+		signature.DeviceInfo = c.options.SignatureInfo.DeviceInfo
+	} else {
+		signature.DeviceInfo = GetRandomDevice()
+	}
+
+	debugProto("Signature", signature)
+
+	signatureProto, err := proto.Marshal(signature)
+	if err != nil {
+		return nil, errors.New("Failed to marshal the request signature")
+	}
+
+	requestMessage, err := proto.Marshal(&protos.SendEncryptedSignatureRequest{
+		EncryptedSignature: pcrypt.Encrypt(signatureProto, uint32(signature.TimestampSinceStart)),
+	})
+	if err != nil {
+		return nil, errors.New("Failed to marshal request message")
+	}
+
+	requestEnvelope.PlatformRequests = []*protos.RequestEnvelope_PlatformRequest{
+		{
+			Type:           protos.PlatformRequestType_SEND_ENCRYPTED_SIGNATURE,
+			RequestMessage: requestMessage,
+		},
+	}
+
 	var responseEnvelope *protos.ResponseEnvelope
-	var err error
 	for i := 1; i <= c.options.MaxTries; i++ {
 		responseEnvelope, err = c.rpc.Request(ctx, c.getServerURL(), requestEnvelope)
 
