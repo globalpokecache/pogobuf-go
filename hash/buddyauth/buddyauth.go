@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -17,6 +18,7 @@ type Provider struct {
 	version   int
 	keysMutex sync.RWMutex
 	keys      []*BuddyKey
+	http.Client
 }
 
 type BuddyKey struct {
@@ -72,6 +74,9 @@ func NewProvider(apiVersion int) (*Provider, error) {
 	provider := &Provider{
 		version: apiVersion,
 		keys:    []*BuddyKey{},
+		Client: http.Client{
+			Timeout: 10 * time.Second,
+		},
 	}
 
 	return provider, nil
@@ -149,7 +154,9 @@ func (p *Provider) DelKey(key string) error {
 }
 
 func (p *Provider) ApiURL() string {
-	v := fmt.Sprintf("0.%.1f", float64(p.version)/100)
+	major := math.Floor(float64(p.version) / 100.0)
+	minor := (float64(p.version)/100.0 - major) * 100
+	v := fmt.Sprintf("0.%.f.%.f", major, minor)
 	return fmt.Sprintf("http://hashing.pogodev.io/%s", versions[v])
 }
 
@@ -160,6 +167,7 @@ func (p *Provider) GetAvailableKey() (*BuddyKey, error) {
 	var key *BuddyKey
 	var found bool
 	debug("Searching for available key")
+	var errs []string
 	for i := 0; i < len(p.keys); i++ {
 		key = p.keys[i]
 
@@ -176,11 +184,23 @@ func (p *Provider) GetAvailableKey() (*BuddyKey, error) {
 			break
 		}
 
+		if key.Expired {
+			errs = append(errs, fmt.Sprintf("%s:%s", key.Key[0:6]+"..."+key.Key[len(key.Key)-6:len(key.Key)-1], "EXPIRED_KEY"))
+		}
+
+		if key.Invalid {
+			errs = append(errs, fmt.Sprintf("%s:%s", key.Key[0:6]+"..."+key.Key[len(key.Key)-6:len(key.Key)-1], "INVALID_KEY"))
+		}
+
+		if key.Used >= key.RPM {
+			errs = append(errs, fmt.Sprintf("%s:%s", key.Key[0:6]+"..."+key.Key[len(key.Key)-6:len(key.Key)-1], "EXHAUSTED_KEY"))
+		}
+
 		debug("Skipping invalid key: %s", key.Key)
 	}
 	if !found {
 		debug("No valid key found")
-		return nil, ErrNoAvailableKey
+		return nil, fmt.Errorf("%s: %v", ErrNoAvailableKey, errs)
 	}
 
 	key.Used++
@@ -204,13 +224,15 @@ func (p *Provider) hashRequest(hashReq HashRequest, key *BuddyKey) (HashResponse
 		return hresp, fmt.Errorf("Failed to create request: %s", err)
 	}
 
+	req.Close = true
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("X-AuthToken", key.Key)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := p.Client.Do(req)
 	if err != nil {
 		return hresp, fmt.Errorf("Failed to do request: %s", err)
 	}
+	defer resp.Body.Close()
 
 	if resp.Header.Get("X-Maxrequestcount") != "" {
 		// rateperiodend, _ := strconv.ParseInt(resp.Header.Get("X-Rateperiodend"), 10, 64)

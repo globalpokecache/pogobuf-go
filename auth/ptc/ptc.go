@@ -77,7 +77,7 @@ func (p *Provider) Login(ctx context.Context, username, password string) (string
 
 	resp2, err2 := ctxhttp.Do(ctx, httpClient, req2)
 	if _, ok2 := err2.(*url.Error); !ok2 {
-		if resp2.Body != nil {
+		if resp2 != nil && resp2.Body != nil {
 			defer resp2.Body.Close()
 			body2, _ := ioutil.ReadAll(resp2.Body)
 			var respBody loginRequest

@@ -171,46 +171,6 @@ func (c *Instance) DownloadSettings(ctx context.Context) (*protos.DownloadSettin
 	return &downloadSettings, nil
 }
 
-func (c *Instance) PlayerUpdateRequest() (*protos.Request, error) {
-	msg, err := proto.Marshal(&protos.PlayerUpdateMessage{
-		Latitude:  c.player.Latitude,
-		Longitude: c.player.Longitude,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("Failed to create PLAYER_UPDATE: %s", err)
-	}
-
-	return &protos.Request{
-		RequestType:    protos.RequestType_PLAYER_UPDATE,
-		RequestMessage: msg,
-	}, nil
-}
-
-func (c *Instance) PlayerUpdate(ctx context.Context) (*protos.PlayerUpdateResponse, error) {
-	request, err := c.PlayerUpdateRequest()
-	if err != nil {
-		return nil, err
-	}
-
-	var response *protos.ResponseEnvelope
-	response, err = c.Call(ctx, request)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(response.Returns) == 0 {
-		return nil, errors.New("Server not accepted this request")
-	}
-
-	var playerUpdate protos.PlayerUpdateResponse
-	err = proto.Unmarshal(response.Returns[0], &playerUpdate)
-	if err != nil {
-		return nil, fmt.Errorf("Failed to call PLAYER_UPDATE: %s", err)
-	}
-
-	return &playerUpdate, nil
-}
-
 func (c *Instance) GetPlayerRequest(country, language, timezone string) (*protos.Request, error) {
 	msg, err := proto.Marshal(&protos.GetPlayerMessage{
 		PlayerLocale: &protos.GetPlayerMessage_PlayerLocale{

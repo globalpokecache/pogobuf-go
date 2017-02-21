@@ -12,6 +12,7 @@ import (
 	"github.com/globalpokecache/pogobuf-go"
 	"github.com/golang/protobuf/proto"
 	"golang.org/x/net/context/ctxhttp"
+	"time"
 )
 
 const rpcUserAgent = "Niantic App"
@@ -34,6 +35,7 @@ func NewRPC() *RPC {
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			return raise("Did not follow redirect")
 		},
+		Timeout: 10 * time.Second,
 	}
 
 	return &RPC{
@@ -57,6 +59,7 @@ func (c *RPC) Request(ctx context.Context, endpoint string, requestEnvelope *pro
 	if err != nil {
 		return responseEnvelope, raise("Unable to create the request")
 	}
+	request.Close = true
 	request.Header.Add("User-Agent", rpcUserAgent)
 
 	// Perform call to API

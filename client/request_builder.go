@@ -12,7 +12,7 @@ import (
 )
 
 const defaultURL = "https://pgorelease.nianticlabs.com/plfe/rpc"
-const downloadSettingsHash = "54b359c97e46900f87211ef6e6dd0b7f2a3ea1f5"
+const downloadSettingsHash = "7b9c5056799a2c5c7d48a62c497736cbcf8c4acb"
 
 func (c *Instance) getServerURL() string {
 	var url string
@@ -195,9 +195,33 @@ func (c *Instance) Call(ctx context.Context, requests ...*protos.Request) (*prot
 		},
 	}
 
+	if c.shouldAddPtr8(requests) {
+		ptr8byte, err := proto.Marshal(&protos.UnknownPtr8Request{
+			Message: c.ptr8,
+		})
+		if err == nil {
+			requestEnvelope.PlatformRequests = append(requestEnvelope.PlatformRequests, &protos.RequestEnvelope_PlatformRequest{
+				Type:           protos.PlatformRequestType_UNKNOWN_PTR_8,
+				RequestMessage: ptr8byte,
+			})
+		}
+	}
+
 	var responseEnvelope *protos.ResponseEnvelope
 	for i := 1; i <= c.options.MaxTries; i++ {
 		responseEnvelope, err = c.rpc.Request(ctx, c.getServerURL(), requestEnvelope)
+
+		for _, pr := range responseEnvelope.PlatformReturns {
+			if pr.Type == protos.PlatformRequestType_UNKNOWN_PTR_8 {
+				var ptr8 protos.UnknownPtr8Response
+				err := proto.Unmarshal(pr.Response, &ptr8)
+				if err == nil {
+					if ptr8.Message != "" {
+						c.ptr8 = ptr8.Message
+					}
+				}
+			}
+		}
 
 		if responseEnvelope.ApiUrl != "" {
 			c.setURL(responseEnvelope.ApiUrl)
@@ -220,4 +244,26 @@ func (c *Instance) Call(ctx context.Context, requests ...*protos.Request) (*prot
 	}
 
 	return responseEnvelope, err
+}
+
+func (c *Instance) shouldAddPtr8(requests []*protos.Request) bool {
+	if len(requests) == 1 && requests[0].RequestType == protos.RequestType_GET_PLAYER {
+		return true
+	}
+
+	hasMap := false
+	for _, req := range requests {
+		if req.RequestType == protos.RequestType_GET_MAP_OBJECTS {
+			hasMap = true
+			break
+		}
+	}
+	if hasMap {
+		if !c.firstGetMap {
+			return true
+		}
+		c.firstGetMap = false
+	}
+
+	return false
 }

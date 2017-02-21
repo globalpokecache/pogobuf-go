@@ -11,7 +11,7 @@ import (
 )
 
 const (
-	apiVersion = 5500
+	apiVersion = 5702
 )
 
 func main() {
@@ -45,7 +45,7 @@ func main() {
 	radius := 150.0
 
 	cli.SetPosition(latitude, longitude, 0, 0)
-	cli.Init(ctx)
+	cli.Init(ctx, "INSERT-YOUR-NICKNAME-TO-AUTO-COMPLETE-TUTORIAL")
 
 	cells := helpers.GetCellsFromRadius(latitude, longitude, radius, 17)
 	_, err = cli.GetMapObjects(ctx, cells, make([]int64, len(cells)))
