@@ -10,6 +10,7 @@ import (
 	"github.com/globalpokecache/pogobuf-go/hash"
 	"github.com/globalpokecache/pogobuf-go/helpers"
 	"github.com/golang/protobuf/proto"
+	"sync"
 	"time"
 )
 
@@ -42,6 +43,8 @@ type Instance struct {
 	options            Options
 	player             Player
 	rpc                *RPC
+	request            int64
+	lehmerSeed         int64
 	rpcID              int64
 	hasTicket          bool
 	authTicket         *protos.AuthTicket
@@ -50,10 +53,17 @@ type Instance struct {
 	ptr8               string
 	inventoryTimestamp int64
 	templateTimestamp  int64
-	startedTime        time.Time
+	startedTime        uint64
 	serverURL          string
 	firstGetMap        bool
 	mapSettings        protos.MapSettings
+
+	locationFixSync     sync.Mutex
+	lastLocationCourse  float32
+	lastLocationFixTime uint64
+	lastLocationFix     *protos.Signature_LocationFix
+	locationFixes       []*protos.Signature_LocationFix
+	locationFixerStop   chan struct{}
 }
 
 func New(opts *Options) (*Instance, error) {
@@ -85,22 +95,32 @@ func New(opts *Options) (*Instance, error) {
 		opts.MaxTries = defaultOptions.MaxTries
 	}
 
+	if opts.SignatureInfo.DeviceInfo == nil {
+		opts.SignatureInfo.DeviceInfo = GetRandomDevice()
+	}
+
 	return &Instance{
-		options:     *opts,
-		token2:      token2,
-		sessionHash: shash,
-		startedTime: time.Now(),
-		rpc:         NewRPC(),
-		firstGetMap: true,
-		ptr8:        "",
+		options:             *opts,
+		token2:              token2,
+		sessionHash:         shash,
+		startedTime:         getTimestamp(time.Now().Add(time.Duration(-4500-randInt(1000)) * time.Millisecond)),
+		lastLocationFixTime: getTimestamp(time.Now().Add(time.Duration(-1000-randInt(1000)) * time.Millisecond)),
+		rpc:                 NewRPC(),
+		firstGetMap:         true,
+		lehmerSeed:          1,
+		ptr8:                "",
 	}, nil
 }
 
 func (c *Instance) SetPosition(lat, lon, accu, alt float64) {
 	c.player.Latitude = lat
 	c.player.Longitude = lon
-	c.player.Accuracy = accu
-	c.player.Altitude = alt
+	if accu > 0 {
+		c.player.Accuracy = accu
+	}
+	if alt > 0 {
+		c.player.Altitude = alt
+	}
 }
 
 func (c *Instance) BuildCommon() []*protos.Request {
@@ -120,7 +140,18 @@ func (c *Instance) BuildCommon() []*protos.Request {
 }
 
 func (c *Instance) Init(ctx context.Context, nickname string) (*protos.GetPlayerResponse, error) {
-	c.inventoryTimestamp = 0
+	c.ptr8 = "90f6a704505bccac73cec99b07794993e6fd5a12"
+	c.request = 1
+	c.lehmerSeed = 1
+
+	if c.locationFixerStop != nil {
+		c.locationFixerStop <- struct{}{}
+	}
+	locationFixerStop := make(chan struct{})
+	go c.locationFixer(locationFixerStop)
+	c.locationFixerStop = locationFixerStop
+
+	time.Sleep(1 * time.Second)
 
 	var response *protos.ResponseEnvelope
 	c.Call(ctx)
@@ -242,7 +273,7 @@ func (c *Instance) Init(ctx context.Context, nickname string) (*protos.GetPlayer
 }
 
 func (c *Instance) GetMap(ctx context.Context) (*protos.GetMapObjectsResponse, *protos.ResponseEnvelope, error) {
-	cells := helpers.GetCellsFromRadius(c.player.Latitude, c.player.Longitude, 200, 15)
+	cells := helpers.GetCellsFromRadius(c.player.Latitude, c.player.Longitude, 500, 15)
 	var response *protos.ResponseEnvelope
 
 	getMapReq, err := c.GetMapObjectsRequest(cells, make([]int64, len(cells)))

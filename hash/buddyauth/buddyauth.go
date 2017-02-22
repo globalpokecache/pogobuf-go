@@ -317,6 +317,8 @@ func (p *Provider) Hash(authTicket, sessionData []byte, latitude, longitude, acc
 			}
 			break
 		}
+		key.Count--
+		key.Used--
 		debug("Failed to hash request: %s", err)
 		time.Sleep(1 * time.Second)
 	}

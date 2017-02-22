@@ -3,10 +3,21 @@ package client
 import (
 	"encoding/hex"
 	"github.com/globalpokecache/POGOProtos-go"
+	"math"
 	"math/rand"
 	"time"
 )
 
+func randTriang(lower, upper, mode float64) float64 {
+	var c = (mode - lower) / (upper - lower)
+	var u = randFloat()
+
+	if u <= c {
+		return lower + math.Sqrt(u*(upper-lower)*(mode-lower))
+	}
+
+	return upper - math.Sqrt((1-u)*(upper-lower)*(upper-mode))
+}
 func randInt(l int) int {
 	var s1 = rand.NewSource(time.Now().UnixNano())
 	var r1 = rand.New(s1)
@@ -21,41 +32,6 @@ func randFloat() float64 {
 
 func getTimestamp(t time.Time) uint64 {
 	return uint64(t.UnixNano() / int64(time.Millisecond))
-}
-
-func buildLocationFixes(requestEnvelope *protos.RequestEnvelope, timestampSinceStart uint64) (fixes []*protos.Signature_LocationFix) {
-	if len(requestEnvelope.Requests) == 0 {
-		return
-	}
-
-	providerCount := 4 + randInt(6)
-	for i := 0; i < providerCount; i++ {
-		var timestampSnapshot = timestampSinceStart + uint64(150*(i+1)+randInt(250*(i+1)-150*(i+1)))
-		if timestampSnapshot >= timestampSinceStart {
-			if len(fixes) != 0 {
-				break
-			}
-
-			timestampSnapshot = timestampSinceStart - uint64(20+randInt(30))
-			if timestampSnapshot < 0 {
-				timestampSnapshot = 0
-			}
-		}
-
-		fixes = append(fixes, &protos.Signature_LocationFix{
-			TimestampSnapshot:  timestampSnapshot,
-			Longitude:          float32(requestEnvelope.Longitude + 10 + (randFloat() * 100)),
-			Latitude:           float32(requestEnvelope.Latitude + 10 + (randFloat() * 100)),
-			HorizontalAccuracy: float32(5.0 + (randFloat() * 20.0)),
-			VerticalAccuracy:   float32(5.0 + (randFloat() * 20.0)),
-			Altitude:           float32(10.0 + (randFloat() * 20.0)),
-			Provider:           "fused",
-			ProviderStatus:     3,
-			LocationType:       uint64(1),
-			Course:             1,
-		})
-	}
-	return
 }
 
 var (
