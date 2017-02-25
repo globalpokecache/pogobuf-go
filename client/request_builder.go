@@ -125,7 +125,7 @@ func (c *Instance) Call(ctx context.Context, requests ...*protos.Request) (*prot
 			c.sessionHash,
 			requestEnvelope.Latitude,
 			requestEnvelope.Longitude,
-			requestEnvelope.Accuracy,
+			randAccu,
 			t,
 			requestsBytes,
 		)
@@ -139,6 +139,7 @@ func (c *Instance) Call(ctx context.Context, requests ...*protos.Request) (*prot
 		}
 
 		c.locationFixSync.Lock()
+		requestEnvelope.MsSinceLastLocationfix = int64(t - c.lastLocationFixTime)
 
 		signature := &protos.Signature{
 			RequestHash:         requestHash,
@@ -153,23 +154,24 @@ func (c *Instance) Call(ctx context.Context, requests ...*protos.Request) (*prot
 			},
 			SensorInfo: []*protos.Signature_SensorInfo{
 				{
-					TimestampSnapshot:   c.lastLocationFixTime - c.startedTime + uint64(-800+randInt(800)),
-					LinearAccelerationX: randTriang(-1.7, 1.2, 0),
-					LinearAccelerationY: randTriang(-1.4, 1.9, 0),
-					LinearAccelerationZ: randTriang(-1.4, .9, 0),
-					MagneticFieldX:      randTriang(-54, 50, 0),
-					MagneticFieldY:      randTriang(-51, 57, -4.8),
-					MagneticFieldZ:      randTriang(-56, 43, -30),
-					AttitudePitch:       randTriang(-1.5, 1.5, 0.4),
-					AttitudeYaw:         randTriang(-3.1, 3.1, .198),
-					AttitudeRoll:        randTriang(-2.8, 3.04, 0),
-					RotationRateX:       randTriang(-4.7, 3.9, 0),
-					RotationRateY:       randTriang(-4.7, 4.3, 0),
-					RotationRateZ:       randTriang(-4.7, 6.5, 0),
-					GravityX:            randTriang(-1, 1, 0),
-					GravityY:            randTriang(-1, 1, -.2),
-					GravityZ:            randTriang(-1, .7, -0.7),
-					Status:              3,
+					TimestampSnapshot:     c.lastLocationFixTime - c.startedTime + uint64(-800+randInt(800)),
+					LinearAccelerationX:   randTriang(-1.7, 1.2, 0),
+					LinearAccelerationY:   randTriang(-1.4, 1.9, 0),
+					LinearAccelerationZ:   randTriang(-1.4, .9, 0),
+					MagneticFieldX:        randTriang(-54, 50, 0),
+					MagneticFieldY:        randTriang(-51, 57, -4.8),
+					MagneticFieldZ:        randTriang(-56, 43, -30),
+					MagneticFieldAccuracy: []int32{-1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2}[randInt(8)],
+					AttitudePitch:         randTriang(-1.5, 1.5, 0.4),
+					AttitudeYaw:           randTriang(-3.1, 3.1, .198),
+					AttitudeRoll:          randTriang(-2.8, 3.04, 0),
+					RotationRateX:         randTriang(-4.7, 3.9, 0),
+					RotationRateY:         randTriang(-4.7, 4.3, 0),
+					RotationRateZ:         randTriang(-4.7, 6.5, 0),
+					GravityX:              randTriang(-1, 1, 0),
+					GravityY:              randTriang(-1, 1, -.2),
+					GravityZ:              randTriang(-1, .7, -0.7),
+					Status:                3,
 				},
 			},
 		}
@@ -180,7 +182,7 @@ func (c *Instance) Call(ctx context.Context, requests ...*protos.Request) (*prot
 		} else {
 			signature.LocationFix = []*protos.Signature_LocationFix{c.lastLocationFix}
 		}
-		requestEnvelope.MsSinceLastLocationfix = int64(getTimestamp(time.Now())) - int64(c.lastLocationFixTime)
+
 		c.locationFixSync.Unlock()
 
 		if signature.TimestampSinceStart < 5000 {
@@ -268,10 +270,10 @@ func (c *Instance) shouldAddPtr8(requests []*protos.Request) bool {
 	hasMap := false
 	for _, req := range requests {
 		if req.RequestType == protos.RequestType_GET_MAP_OBJECTS {
-			hasMap = true
-			break
+			return true
 		}
 	}
+
 	if hasMap {
 		if !c.firstGetMap {
 			return true

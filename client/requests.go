@@ -428,8 +428,15 @@ func (c *Instance) VerifyChallenge(ctx context.Context, token string) (*protos.V
 		return nil, err
 	}
 
+	getBuddyWalkedReq, _ := c.GetBuddyWalkedRequest()
+
+	var requests []*protos.Request
+	requests = append(requests, request)
+	requests = append(requests, c.BuildCommon()...)
+	requests = append(requests, getBuddyWalkedReq)
+
 	var response *protos.ResponseEnvelope
-	response, err = c.Call(ctx, request)
+	response, err = c.Call(ctx, requests...)
 	if err != nil {
 		return nil, err
 	}
@@ -676,8 +683,15 @@ func (c *Instance) FortSearch(ctx context.Context, fortid string, lat, lon float
 		return nil, err
 	}
 
+	getBuddyWalkedReq, _ := c.GetBuddyWalkedRequest()
+
+	var requests []*protos.Request
+	requests = append(requests, request)
+	requests = append(requests, c.BuildCommon()...)
+	requests = append(requests, getBuddyWalkedReq)
+
 	var response *protos.ResponseEnvelope
-	response, err = c.Call(ctx, request)
+	response, err = c.Call(ctx, requests...)
 	if err != nil {
 		return nil, err
 	}

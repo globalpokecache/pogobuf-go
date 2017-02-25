@@ -59,7 +59,6 @@ func (c *RPC) Request(ctx context.Context, endpoint string, requestEnvelope *pro
 	if err != nil {
 		return responseEnvelope, raise("Unable to create the request")
 	}
-	request.Close = true
 	request.Header.Add("User-Agent", rpcUserAgent)
 
 	// Perform call to API

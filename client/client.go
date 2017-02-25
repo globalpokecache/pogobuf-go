@@ -100,15 +100,14 @@ func New(opts *Options) (*Instance, error) {
 	}
 
 	return &Instance{
-		options:             *opts,
-		token2:              token2,
-		sessionHash:         shash,
-		startedTime:         getTimestamp(time.Now().Add(time.Duration(-4500-randInt(1000)) * time.Millisecond)),
-		lastLocationFixTime: getTimestamp(time.Now().Add(time.Duration(-1000-randInt(1000)) * time.Millisecond)),
-		rpc:                 NewRPC(),
-		firstGetMap:         true,
-		lehmerSeed:          1,
-		ptr8:                "",
+		options:     *opts,
+		token2:      token2,
+		sessionHash: shash,
+		startedTime: getTimestamp(time.Now().Add(time.Duration(-4500-randInt(1000)) * time.Millisecond)),
+		rpc:         NewRPC(),
+		firstGetMap: true,
+		lehmerSeed:  1,
+		ptr8:        "",
 	}, nil
 }
 
@@ -129,6 +128,7 @@ func (c *Instance) BuildCommon() []*protos.Request {
 	getInventory, _ := c.GetInventoryRequest(c.inventoryTimestamp)
 	checkAwarded, _ := c.CheckAwardedBadgesRequest()
 	downloadSettings, _ := c.DownloadSettingsRequest()
+	// getBuddyWalkedReq, _ := c.GetBuddyWalkedRequest()
 
 	return []*protos.Request{
 		checkChallenge,
@@ -136,6 +136,7 @@ func (c *Instance) BuildCommon() []*protos.Request {
 		getInventory,
 		checkAwarded,
 		downloadSettings,
+		// getBuddyWalkedReq,
 	}
 }
 
@@ -144,6 +145,8 @@ func (c *Instance) Init(ctx context.Context, nickname string) (*protos.GetPlayer
 	c.request = 1
 	c.lehmerSeed = 1
 
+	c.lastLocationFixTime = getTimestamp(time.Now())
+
 	if c.locationFixerStop != nil {
 		c.locationFixerStop <- struct{}{}
 	}
@@ -151,12 +154,13 @@ func (c *Instance) Init(ctx context.Context, nickname string) (*protos.GetPlayer
 	go c.locationFixer(locationFixerStop)
 	c.locationFixerStop = locationFixerStop
 
-	time.Sleep(1 * time.Second)
+	time.Sleep(time.Duration(1000+randInt(1000)) * time.Millisecond)
 
-	var response *protos.ResponseEnvelope
 	c.Call(ctx)
 
 	time.Sleep(1500 * time.Millisecond)
+
+	var response *protos.ResponseEnvelope
 
 	getPlayerReq, _ := c.GetPlayerRequest("US", "en", "America/Chicago")
 	response, err := c.Call(ctx, getPlayerReq)
@@ -227,7 +231,9 @@ func (c *Instance) Init(ctx context.Context, nickname string) (*protos.GetPlayer
 	}
 
 	mapSettings := downloadResponse.GetSettings().GetMapSettings()
-	c.mapSettings = *mapSettings
+	if mapSettings != nil {
+		c.mapSettings = *mapSettings
+	}
 
 	getAssetDigest, _ := c.GetAssetDigestRequest(protos.Platform_IOS, "", "", "", c.options.Version)
 	requests = append(c.BuildCommon(), getAssetDigest)
@@ -258,15 +264,14 @@ func (c *Instance) Init(ctx context.Context, nickname string) (*protos.GetPlayer
 		}
 	}
 
-	levelUp, _ := c.LevelUpRewardsRequest(level)
-	requests = append(c.BuildCommon(), levelUp)
+	getBuddyWalkedReq, _ := c.GetBuddyWalkedRequest()
+	levelUpReq, _ := c.LevelUpRewardsRequest(level)
+	requests = append(requests, levelUpReq)
+	requests = append(requests, c.BuildCommon()...)
+	requests = append(requests, getBuddyWalkedReq)
 	response, err = c.Call(ctx, requests...)
 	if err != nil {
 		return nil, err
-	}
-
-	if len(response.Returns) < 6 {
-		return nil, errors.New("Failed to initialize real player client")
 	}
 
 	return &getPlayer, nil

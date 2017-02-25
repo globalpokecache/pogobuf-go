@@ -77,8 +77,8 @@ var (
 )
 
 func GetRandomDevice() *protos.Signature_DeviceInfo {
-	var device = Devices[randInt(len(Devices))]
-	var firmwareType = OsVersions[randInt(len(OsVersions))]
+	// var device = Devices[randInt(len(Devices))]
+	// var firmwareType = OsVersions[randInt(len(OsVersions))]
 
 	shash := make([]byte, 16)
 	rand.Read(shash)
@@ -87,11 +87,11 @@ func GetRandomDevice() *protos.Signature_DeviceInfo {
 	return &protos.Signature_DeviceInfo{
 		DeviceId:             deviceID,
 		DeviceBrand:          "Apple",
-		DeviceModelBoot:      device[0],
-		DeviceModel:          device[1],
-		HardwareModel:        device[2],
+		DeviceModelBoot:      "iPhone8,1",
+		DeviceModel:          "iPhone",
+		HardwareModel:        "N71A9",
 		HardwareManufacturer: "Apple",
-		FirmwareBrand:        "iPhone OS",
-		FirmwareType:         firmwareType,
+		FirmwareBrand:        "IOS",
+		FirmwareType:         "10.2",
 	}
 }
