@@ -59,7 +59,7 @@ type Instance struct {
 	mapSettings        protos.MapSettings
 
 	locationFixSync     sync.Mutex
-	lastLocationCourse  float32
+	lastLocationCourse  float64
 	lastLocationFixTime uint64
 	lastLocationFix     *protos.Signature_LocationFix
 	locationFixes       []*protos.Signature_LocationFix

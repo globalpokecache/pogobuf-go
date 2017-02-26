@@ -94,7 +94,9 @@ func (c *Instance) Call(ctx context.Context, requests ...*protos.Request) (*prot
 			}
 		}
 
+		c.locationFixSync.Lock()
 		t := getTimestamp(time.Now())
+		requestEnvelope.MsSinceLastLocationfix = int64(t - c.lastLocationFixTime)
 
 		var ticket []byte
 		var err error
@@ -138,13 +140,10 @@ func (c *Instance) Call(ctx context.Context, requests ...*protos.Request) (*prot
 			return nil, err
 		}
 
-		c.locationFixSync.Lock()
-		requestEnvelope.MsSinceLastLocationfix = int64(t - c.lastLocationFixTime)
-
 		signature := &protos.Signature{
 			RequestHash:         requestHash,
-			LocationHash1:       int32(locHash1),
-			LocationHash2:       int32(locHash2),
+			LocationHash1:       locHash1,
+			LocationHash2:       locHash2,
 			SessionHash:         c.sessionHash,
 			Timestamp:           t,
 			TimestampSinceStart: (t - c.startedTime),
