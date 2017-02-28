@@ -1,12 +1,13 @@
 package client
 
 import (
+	"fmt"
+	"github.com/globalpokecache/pogobuf-go/auth"
 	"testing"
 )
 
 func TestGetRandomDevice(t *testing.T) {
-	deviceInfo := GetRandomDevice()
-	if len(deviceInfo.DeviceId) != 32 {
-		t.Fatalf("Generated device id should have 32 characters, got %d", len(deviceInfo.DeviceId))
-	}
+	ptc, _ := auth.NewProvider("ptc", "mytest", "")
+	deviceInfo := NewDevice(ptc)
+	fmt.Println(deviceInfo)
 }

@@ -1,11 +1,14 @@
 package client
 
 import (
-	"encoding/hex"
-	"github.com/globalpokecache/POGOProtos-go"
 	"math"
 	"math/rand"
 	"time"
+
+	"github.com/globalpokecache/POGOProtos-go"
+	"github.com/globalpokecache/pogobuf-go/auth"
+	"github.com/satori/go.uuid"
+	"strings"
 )
 
 func randTriang(lower, upper, mode float64) float64 {
@@ -36,27 +39,6 @@ func getTimestamp(t time.Time) uint64 {
 
 var (
 	Devices = [][]string{
-		{"iPad3,1", "iPad", "J1AP"},
-		{"iPad3,2", "iPad", "J2AP"},
-		{"iPad3,3", "iPad", "J2AAP"},
-		{"iPad3,4", "iPad", "P101AP"},
-		{"iPad3,5", "iPad", "P102AP"},
-		{"iPad3,6", "iPad", "P103AP"},
-		{"iPad4,1", "iPad", "J71AP"},
-		{"iPad4,2", "iPad", "J72AP"},
-		{"iPad4,3", "iPad", "J73AP"},
-		{"iPad4,4", "iPad", "J85AP"},
-		{"iPad4,5", "iPad", "J86AP"},
-		{"iPad4,6", "iPad", "J87AP"},
-		{"iPad4,7", "iPad", "J85mAP"},
-		{"iPad4,8", "iPad", "J86mAP"},
-		{"iPad4,9", "iPad", "J87mAP"},
-		{"iPad5,1", "iPad", "J96AP"},
-		{"iPad5,2", "iPad", "J97AP"},
-		{"iPad5,3", "iPad", "J81AP"},
-		{"iPad5,4", "iPad", "J82AP"},
-		{"iPad6,7", "iPad", "J98aAP"},
-		{"iPad6,8", "iPad", "J99aAP"},
 		{"iPhone5,1", "iPhone", "N41AP"},
 		{"iPhone5,2", "iPhone", "N42AP"},
 		{"iPhone5,3", "iPhone", "N48AP"},
@@ -66,32 +48,43 @@ var (
 		{"iPhone7,1", "iPhone", "N56AP"},
 		{"iPhone7,2", "iPhone", "N61AP"},
 		{"iPhone8,1", "iPhone", "N71AP"},
+		{"iPhone8,2", "iPhone", "N66AP"},
+		{"iPhone8,4", "iPhone", "N69AP"},
+		{"iPhone9,1", "iPhone", "D10AP"},
+		{"iPhone9,2", "iPhone", "D11AP"},
+		{"iPhone9,3", "iPhone", "D101AP"},
+		{"iPhone9,4", "iPhone", "D111AP"},
 	}
 
 	OsVersions = []string{
+		// 8
 		"8.1.1", "8.1.2", "8.1.3", "8.2", "8.3",
-		"8.4", "8.4.1", "9.0", "9.0.1", "9.0.2",
+		"8.4", "8.4.1",
+
+		// 9
+		"9.0", "9.0.1", "9.0.2",
 		"9.1", "9.2", "9.2.1", "9.3", "9.3.1",
-		"9.3.2", "9.3.3", "9.3.4",
+		"9.3.2", "9.3.3", "9.3.4", "9.3.5",
+
+		// 10
+		"10.0", "10.0.1", "10.0.2", "10.0.3", "10.1", "10.1.1",
 	}
 )
 
-func GetRandomDevice() *protos.Signature_DeviceInfo {
-	// var device = Devices[randInt(len(Devices))]
-	// var firmwareType = OsVersions[randInt(len(OsVersions))]
-
-	shash := make([]byte, 16)
-	rand.Read(shash)
-	deviceID := hex.EncodeToString(shash)
+func NewDevice(p auth.Provider) *protos.Signature_DeviceInfo {
+	uuid := uuid.NewV5(uuid.Nil, p.GetUsername())
+	deviceID := strings.Replace(uuid.String(), "-", "", -1)
+	device := Devices[randInt(len(Devices))]
+	firmware := OsVersions[randInt(len(OsVersions))]
 
 	return &protos.Signature_DeviceInfo{
 		DeviceId:             deviceID,
 		DeviceBrand:          "Apple",
-		DeviceModelBoot:      "iPhone8,1",
 		DeviceModel:          "iPhone",
-		HardwareModel:        "N71A9",
+		FirmwareBrand:        "iPhone OS",
 		HardwareManufacturer: "Apple",
-		FirmwareBrand:        "IOS",
-		FirmwareType:         "10.2",
+		DeviceModelBoot:      device[0],
+		HardwareModel:        device[2],
+		FirmwareType:         firmware,
 	}
 }

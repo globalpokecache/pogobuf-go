@@ -19,6 +19,7 @@ func (c *Instance) locationFixer(quit chan struct{}) {
 		t := getTimestamp(time.Now())
 
 		moving := (lastpos[0] != c.player.Latitude) && (lastpos[1] != c.player.Longitude)
+		c.player.Lock()
 		lastpos[0] = c.player.Latitude
 		lastpos[1] = c.player.Longitude
 		if c.lastLocationFix == nil || moving || randFloat() > 0.85 {
@@ -38,26 +39,26 @@ func (c *Instance) locationFixer(quit chan struct{}) {
 			}
 
 			if !junk {
-				fix.Latitude = c.player.Latitude
-				fix.Longitude = c.player.Longitude
-				fix.Altitude = randTriang(300, 400, 350)
+				fix.Latitude = float32(c.player.Latitude)
+				fix.Longitude = float32(c.player.Longitude)
+				fix.Altitude = float32(randTriang(300, 400, 350))
 			}
 
 			if randFloat() < 0.95 {
-				fix.Course = randTriang(0.0, 359.0, c.lastLocationCourse)
-				fix.Speed = randTriang(0.2, 4.25, 1)
+				fix.Course = float32(randTriang(0.0, 359.0, float64(c.lastLocationCourse)))
+				fix.Speed = float32(randTriang(0.2, 4.25, 1))
 				c.lastLocationCourse = fix.Course
 			}
 
 			if c.player.Accuracy >= 65 {
-				fix.VerticalAccuracy = randTriang(35, 100, 65)
-				fix.HorizontalAccuracy = []float64{c.player.Accuracy, 65, 65, 66 + (randFloat() * 14), 200}[randInt(5)]
+				fix.VerticalAccuracy = float32(randTriang(35, 100, 65))
+				fix.HorizontalAccuracy = float32([]float64{c.player.Accuracy, 65, 65, 66 + (randFloat() * 14), 200}[randInt(5)])
 			} else if c.player.Accuracy > 10 {
-				fix.HorizontalAccuracy = c.player.Accuracy
-				fix.VerticalAccuracy = []float64{32, 48, 48, 64, 64, 96, 128}[randInt(7)]
+				fix.HorizontalAccuracy = float32(c.player.Accuracy)
+				fix.VerticalAccuracy = float32([]float64{32, 48, 48, 64, 64, 96, 128}[randInt(7)])
 			} else {
-				fix.HorizontalAccuracy = c.player.Accuracy
-				fix.VerticalAccuracy = []float64{3, 4, 6, 6, 8, 12, 24}[randInt(7)]
+				fix.HorizontalAccuracy = float32(c.player.Accuracy)
+				fix.VerticalAccuracy = float32([]float64{3, 4, 6, 6, 8, 12, 24}[randInt(7)])
 			}
 
 			fix.TimestampSnapshot = t - c.startedTime + uint64(-100+randInt(100))
@@ -67,6 +68,7 @@ func (c *Instance) locationFixer(quit chan struct{}) {
 			c.lastLocationFixTime = t
 			c.locationFixSync.Unlock()
 		}
+		c.player.Unlock()
 
 		time.Sleep(900 * time.Millisecond)
 	}

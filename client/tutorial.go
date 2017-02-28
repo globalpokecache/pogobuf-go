@@ -26,28 +26,16 @@ func (c *Instance) completeTutorial(ctx context.Context, tutorialState []protos.
 		}
 	}
 
-	getBuddyWalkedReq, _ := c.GetBuddyWalkedRequest()
-
 	if completed == 5 {
-		getPlayerProfile, err := c.GetPlayerProfileRequest(account)
-		if err != nil {
-			return err
-		}
-		var requests []*protos.Request
-		requests = append(requests, getPlayerProfile)
-		requests = append(requests, c.BuildCommon()...)
-		_, err = c.Call(ctx, requests...)
-		if err != nil {
-			return err
-		}
 
-		registerBackground, err := c.RegisterBackgroundDeviceRequest("", "apple_watch")
+		getBuddyWalkedReq, _ := c.GetBuddyWalkedRequest()
+		getPlayerProfile, err := c.GetPlayerProfileRequest(c.options.AuthProvider.GetUsername())
 		if err != nil {
 			return err
 		}
-		requests = []*protos.Request{}
-		requests = append(requests, registerBackground)
-		requests = append(requests, c.BuildCommon()...)
+		requests := []*protos.Request{getPlayerProfile}
+		requests = append(requests, c.BuildCommon(true)...)
+		requests = append(requests, getBuddyWalkedReq)
 		_, err = c.Call(ctx, requests...)
 		if err != nil {
 			return err
@@ -62,10 +50,7 @@ func (c *Instance) completeTutorial(ctx context.Context, tutorialState []protos.
 		if err != nil {
 			return err
 		}
-		requests := []*protos.Request{}
-		requests = append(requests, markComplete)
-		requests = append(requests, c.BuildCommon()...)
-		_, err = c.Call(ctx, requests...)
+		_, err = c.Call(ctx, markComplete)
 		if err != nil {
 			return err
 		}
@@ -87,10 +72,7 @@ func (c *Instance) completeTutorial(ctx context.Context, tutorialState []protos.
 		if err != nil {
 			return err
 		}
-		requests := []*protos.Request{}
-		requests = append(requests, setAvatar)
-		requests = append(requests, c.BuildCommon()...)
-		_, err = c.Call(ctx, requests...)
+		_, err = c.Call(ctx, setAvatar)
 		if err != nil {
 			return err
 		}
@@ -101,10 +83,7 @@ func (c *Instance) completeTutorial(ctx context.Context, tutorialState []protos.
 		if err != nil {
 			return err
 		}
-		requests = []*protos.Request{}
-		requests = append(requests, markComplete)
-		requests = append(requests, c.BuildCommon()...)
-		_, err = c.Call(ctx, requests...)
+		_, err = c.Call(ctx, markComplete)
 		if err != nil {
 			return err
 		}
@@ -114,23 +93,7 @@ func (c *Instance) completeTutorial(ctx context.Context, tutorialState []protos.
 	if err != nil {
 		return err
 	}
-	var requests []*protos.Request
-	requests = append(requests, getPlayerProfile)
-	requests = append(requests, c.BuildCommon()...)
-	requests = append(requests, getBuddyWalkedReq)
-	_, err = c.Call(ctx, requests...)
-	if err != nil {
-		return err
-	}
-
-	registerBackground, err := c.RegisterBackgroundDeviceRequest("", "apple_watch")
-	if err != nil {
-		return err
-	}
-	requests = []*protos.Request{}
-	requests = append(requests, registerBackground)
-	requests = append(requests, c.BuildCommon()...)
-	_, err = c.Call(ctx, requests...)
+	_, err = c.Call(ctx, getPlayerProfile)
 	if err != nil {
 		return err
 	}
@@ -143,11 +106,7 @@ func (c *Instance) completeTutorial(ctx context.Context, tutorialState []protos.
 		if err != nil {
 			return err
 		}
-		requests = []*protos.Request{}
-		requests = append(requests, getDownloadsURLs)
-		requests = append(requests, c.BuildCommon()...)
-		requests = append(requests, getBuddyWalkedReq)
-		_, err = c.Call(ctx, requests...)
+		_, err = c.Call(ctx, getDownloadsURLs)
 		if err != nil {
 			return err
 		}
@@ -159,11 +118,7 @@ func (c *Instance) completeTutorial(ctx context.Context, tutorialState []protos.
 		if err != nil {
 			return err
 		}
-		requests = []*protos.Request{}
-		requests = append(requests, encounterRequest)
-		requests = append(requests, c.BuildCommon()...)
-		requests = append(requests, getBuddyWalkedReq)
-		_, err = c.Call(ctx, requests...)
+		_, err = c.Call(ctx, encounterRequest)
 		if err != nil {
 			return err
 		}
@@ -172,11 +127,7 @@ func (c *Instance) completeTutorial(ctx context.Context, tutorialState []protos.
 		if err != nil {
 			return err
 		}
-		requests = []*protos.Request{}
-		requests = append(requests, getPlayerRequest)
-		requests = append(requests, c.BuildCommon()...)
-		requests = append(requests, getBuddyWalkedReq)
-		_, err = c.Call(ctx, requests...)
+		_, err = c.Call(ctx, getPlayerRequest)
 		if err != nil {
 			return err
 		}
@@ -189,11 +140,7 @@ func (c *Instance) completeTutorial(ctx context.Context, tutorialState []protos.
 		if err != nil {
 			return err
 		}
-		requests = []*protos.Request{}
-		requests = append(requests, claimCodename)
-		requests = append(requests, c.BuildCommon()...)
-		requests = append(requests, getBuddyWalkedReq)
-		_, err = c.Call(ctx, requests...)
+		_, err = c.Call(ctx, claimCodename)
 		if err != nil {
 			return err
 		}
@@ -202,10 +149,7 @@ func (c *Instance) completeTutorial(ctx context.Context, tutorialState []protos.
 		if err != nil {
 			return err
 		}
-		requests = []*protos.Request{}
-		requests = append(requests, markComplete)
-		requests = append(requests, c.BuildCommon()...)
-		_, err = c.Call(ctx, requests...)
+		_, err = c.Call(ctx, markComplete)
 		if err != nil {
 			return err
 		}
@@ -218,11 +162,7 @@ func (c *Instance) completeTutorial(ctx context.Context, tutorialState []protos.
 		if err != nil {
 			return err
 		}
-		requests = []*protos.Request{}
-		requests = append(requests, markComplete)
-		requests = append(requests, c.BuildCommon()...)
-		requests = append(requests, getBuddyWalkedReq)
-		_, err = c.Call(ctx, requests...)
+		_, err = c.Call(ctx, markComplete)
 		if err != nil {
 			return err
 		}

@@ -132,9 +132,9 @@ func (c *Instance) DownloadItemTemplates(ctx context.Context, paginate bool, off
 	return &downloadItemTemplates, nil
 }
 
-func (c *Instance) DownloadSettingsRequest() (*protos.Request, error) {
+func (c *Instance) DownloadSettingsRequest(hash string) (*protos.Request, error) {
 	msg, err := proto.Marshal(&protos.DownloadSettingsMessage{
-		Hash: downloadSettingsHash,
+		Hash: hash,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create DOWNLOAD_SETTINGS: %s", err)
@@ -146,8 +146,8 @@ func (c *Instance) DownloadSettingsRequest() (*protos.Request, error) {
 	}, nil
 }
 
-func (c *Instance) DownloadSettings(ctx context.Context) (*protos.DownloadSettingsResponse, error) {
-	request, err := c.DownloadSettingsRequest()
+func (c *Instance) DownloadSettings(ctx context.Context, hash string) (*protos.DownloadSettingsResponse, error) {
+	request, err := c.DownloadSettingsRequest(hash)
 	if err != nil {
 		return nil, err
 	}
@@ -428,12 +428,9 @@ func (c *Instance) VerifyChallenge(ctx context.Context, token string) (*protos.V
 		return nil, err
 	}
 
-	getBuddyWalkedReq, _ := c.GetBuddyWalkedRequest()
-
 	var requests []*protos.Request
 	requests = append(requests, request)
-	requests = append(requests, c.BuildCommon()...)
-	requests = append(requests, getBuddyWalkedReq)
+	requests = append(requests, c.BuildCommon(false)...)
 
 	var response *protos.ResponseEnvelope
 	response, err = c.Call(ctx, requests...)
@@ -683,12 +680,9 @@ func (c *Instance) FortSearch(ctx context.Context, fortid string, lat, lon float
 		return nil, err
 	}
 
-	getBuddyWalkedReq, _ := c.GetBuddyWalkedRequest()
-
 	var requests []*protos.Request
 	requests = append(requests, request)
-	requests = append(requests, c.BuildCommon()...)
-	requests = append(requests, getBuddyWalkedReq)
+	requests = append(requests, c.BuildCommon(false)...)
 
 	var response *protos.ResponseEnvelope
 	response, err = c.Call(ctx, requests...)

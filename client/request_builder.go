@@ -36,83 +36,76 @@ func (c *Instance) setURL(urlToken string) {
 var (
 	lM int64 = 0x7fffffff
 	lA int64 = 16807
-	lQ int64 = 127773
-	lR int64 = 2836
 )
 
 func (c *Instance) getRequestId() uint64 {
-	hi := c.lehmerSeed
-	lo := c.lehmerSeed % lQ
-	t := lA*lo - lR*hi
-	if t < 0 {
-		t += lM
-	}
-	c.lehmerSeed = t % 0x80000000
-
-	c.request++
+	c.lehmerSeed = (c.lehmerSeed * lA) % lM
 	r := c.lehmerSeed
-	return uint64((r << 32) | c.request)
+	c.rpcID++
+	return uint64((r << 32) | c.rpcID)
 }
 
 var randAccuSeed = []int{5, 5, 5, 5, 10, 10, 10, 30, 30, 50, 65}
 
-func (c *Instance) Call(ctx context.Context, requests ...*protos.Request) (*protos.ResponseEnvelope, error) {
+func (c *Instance) call(ctx context.Context, requests []*protos.Request, prs []*protos.RequestEnvelope_PlatformRequest) (*protos.ResponseEnvelope, error) {
 	var respErr error
 	var responseEnvelope *protos.ResponseEnvelope
-	for i := 0; i <= c.options.MaxTries; i++ {
-		time.Sleep(time.Duration(i*300) * time.Millisecond)
-		fmt.Println("trying...")
 
-		var randAccu = c.player.Accuracy
-		if randAccu == 0 {
-			accuSeed := make([]int, len(randAccuSeed))
-			copy(accuSeed, randAccuSeed)
-			accuSeed = append(accuSeed, randInt(80-66)+66)
-			randAccu = float64(accuSeed[randInt(len(accuSeed))])
+	c.player.Lock()
+	lat, long := c.player.Latitude, c.player.Longitude
+
+	var randAccu = c.player.Accuracy
+	if randAccu == 0 {
+		accuSeed := make([]int, len(randAccuSeed))
+		copy(accuSeed, randAccuSeed)
+		accuSeed = append(accuSeed, randInt(80-66)+66)
+		randAccu = float64(accuSeed[randInt(len(accuSeed))])
+	}
+	c.player.Unlock()
+
+	requestEnvelope := &protos.RequestEnvelope{
+		RequestId:  c.getRequestId(),
+		StatusCode: int32(2),
+	}
+
+	if c.hasTicket {
+		requestEnvelope.AuthTicket = c.authTicket
+	} else {
+		var unk2 int32
+		if c.options.AuthProvider.Type() == "ptc" {
+			unk2 = []int32{2, 8, 21, 21, 21, 28, 37, 56, 59, 59, 59}[randInt(11)]
 		}
 
-		requestEnvelope := &protos.RequestEnvelope{
-			RequestId:  c.getRequestId(),
-			StatusCode: int32(2),
-
-			Longitude: c.player.Longitude,
-			Latitude:  c.player.Latitude,
-			Accuracy:  randAccu,
-
-			Requests: requests,
+		requestEnvelope.AuthInfo = &protos.RequestEnvelope_AuthInfo{
+			Provider: c.options.AuthProvider.Type(),
+			Token: &protos.RequestEnvelope_AuthInfo_JWT{
+				Contents: c.authToken,
+				Unknown2: unk2,
+			},
 		}
+	}
 
-		if c.hasTicket {
-			requestEnvelope.AuthTicket = c.authTicket
-		} else {
-			requestEnvelope.AuthInfo = &protos.RequestEnvelope_AuthInfo{
-				Provider: c.options.AuthType,
-				Token: &protos.RequestEnvelope_AuthInfo_JWT{
-					Contents: c.options.AuthToken,
-					Unknown2: int32(c.token2),
-				},
-			}
+	var locFix []*protos.Signature_LocationFix
+	var lastLocFixTime uint64
+
+	var ticket []byte
+	var err error
+	if c.hasTicket {
+		ticket, err = proto.Marshal(requestEnvelope.AuthTicket)
+		if err != nil {
+			return nil, errors.New("Failed to marshal authTicket")
 		}
-
-		c.locationFixSync.Lock()
-		t := getTimestamp(time.Now())
-		requestEnvelope.MsSinceLastLocationfix = int64(t - c.lastLocationFixTime)
-
-		var ticket []byte
-		var err error
-		if c.hasTicket {
-			ticket, err = proto.Marshal(requestEnvelope.AuthTicket)
-			if err != nil {
-				return nil, errors.New("Failed to marshal authTicket")
-			}
-		} else {
-			ticket, err = proto.Marshal(requestEnvelope.AuthInfo)
-			if err != nil {
-				return nil, errors.New("Failed to marshal authTicket")
-			}
+	} else {
+		ticket, err = proto.Marshal(requestEnvelope.AuthInfo)
+		if err != nil {
+			return nil, errors.New("Failed to marshal authTicket")
 		}
+	}
 
-		requestsBytes := make([][]byte, len(requests))
+	var requestsBytes [][]byte
+	if requests != nil && len(requests) > 0 {
+		requestEnvelope.Requests = requests
+		requestsBytes = make([][]byte, len(requests))
 		for idx, request := range requests {
 			debugProto(fmt.Sprintf("Request(%d)", idx), request)
 			req, err := proto.Marshal(request)
@@ -121,12 +114,60 @@ func (c *Instance) Call(ctx context.Context, requests ...*protos.Request) (*prot
 			}
 			requestsBytes[idx] = req
 		}
+	}
+
+	c.locationFixSync.Lock()
+	lastLocFixTime = c.lastLocationFixTime
+
+	if len(c.locationFixes) > 0 {
+		locFix = c.locationFixes
+		c.locationFixes = []*protos.Signature_LocationFix{c.lastLocationFix}
+	}
+
+	c.locationFixSync.Unlock()
+
+	for i := 0; i <= c.options.MaxTries; i++ {
+		time.Sleep(time.Duration(i*900) * time.Millisecond)
+
+		t := getTimestamp(time.Now())
+
+		sinceStart := (t - c.startedTime)
+
+		c.locationFixSync.Lock()
+		lastLocFixTime = c.lastLocationFixTime
+
+		if len(c.locationFixes) > 0 {
+			locFix = c.locationFixes
+			c.locationFixes = []*protos.Signature_LocationFix{}
+		} else {
+			if c.lastLocationFix != nil {
+				locFix = []*protos.Signature_LocationFix{c.lastLocationFix}
+			} else {
+				locFix = nil
+			}
+		}
+
+		var sensorTS uint64
+		if c.lastLocationFixTime > 0 {
+			requestEnvelope.MsSinceLastLocationfix = int64(t - lastLocFixTime)
+			sensorTS = lastLocFixTime - c.startedTime + uint64(-800+randInt(800))
+		} else {
+			requestEnvelope.MsSinceLastLocationfix = -1
+			sensorTS = sinceStart - uint64(100+randInt(100))
+		}
+
+		if c.lastLocationFix != nil {
+			requestEnvelope.Longitude = long
+			requestEnvelope.Latitude = lat
+			requestEnvelope.Accuracy = randAccu
+		}
+		c.locationFixSync.Unlock()
 
 		locHash1, locHash2, requestHash, err := c.options.HashProvider.Hash(
 			ticket,
 			c.sessionHash,
-			requestEnvelope.Latitude,
-			requestEnvelope.Longitude,
+			lat,
+			long,
 			randAccu,
 			t,
 			requestsBytes,
@@ -141,19 +182,18 @@ func (c *Instance) Call(ctx context.Context, requests ...*protos.Request) (*prot
 		}
 
 		signature := &protos.Signature{
-			RequestHash:         requestHash,
-			LocationHash1:       locHash1,
-			LocationHash2:       locHash2,
+			LocationHash1:       int32(locHash1),
+			LocationHash2:       int32(locHash2),
 			SessionHash:         c.sessionHash,
 			Timestamp:           t,
-			TimestampSinceStart: (t - c.startedTime),
+			TimestampSinceStart: sinceStart,
 			Unknown25:           uk25,
 			ActivityStatus: &protos.Signature_ActivityStatus{
 				Stationary: true,
 			},
 			SensorInfo: []*protos.Signature_SensorInfo{
 				{
-					TimestampSnapshot:     c.lastLocationFixTime - c.startedTime + uint64(-800+randInt(800)),
+					TimestampSnapshot:     sensorTS,
 					LinearAccelerationX:   randTriang(-1.7, 1.2, 0),
 					LinearAccelerationY:   randTriang(-1.4, 1.9, 0),
 					LinearAccelerationZ:   randTriang(-1.4, .9, 0),
@@ -175,19 +215,11 @@ func (c *Instance) Call(ctx context.Context, requests ...*protos.Request) (*prot
 			},
 		}
 
-		if len(c.locationFixes) > 0 {
-			signature.LocationFix = c.locationFixes
-			c.locationFixes = []*protos.Signature_LocationFix{}
-		} else {
-			signature.LocationFix = []*protos.Signature_LocationFix{c.lastLocationFix}
+		if requests != nil && len(requests) > 0 {
+			signature.RequestHash = requestHash
 		}
 
-		c.locationFixSync.Unlock()
-
-		if signature.TimestampSinceStart < 5000 {
-			signature.Timestamp = uint64(5000 + randInt(8000))
-		}
-
+		signature.LocationFix = locFix
 		signature.DeviceInfo = c.options.SignatureInfo.DeviceInfo
 
 		debugProto("Signature", signature)
@@ -204,11 +236,10 @@ func (c *Instance) Call(ctx context.Context, requests ...*protos.Request) (*prot
 			return nil, errors.New("Failed to marshal request message")
 		}
 
-		requestEnvelope.PlatformRequests = []*protos.RequestEnvelope_PlatformRequest{
-			{
-				Type:           protos.PlatformRequestType_SEND_ENCRYPTED_SIGNATURE,
-				RequestMessage: requestMessage,
-			},
+		requestEnvelope.PlatformRequests = []*protos.RequestEnvelope_PlatformRequest{}
+
+		if prs != nil {
+			requestEnvelope.PlatformRequests = append(requestEnvelope.PlatformRequests, prs...)
 		}
 
 		if c.shouldAddPtr8(requests) {
@@ -222,6 +253,11 @@ func (c *Instance) Call(ctx context.Context, requests ...*protos.Request) (*prot
 				})
 			}
 		}
+
+		requestEnvelope.PlatformRequests = append(requestEnvelope.PlatformRequests, &protos.RequestEnvelope_PlatformRequest{
+			Type:           protos.PlatformRequestType_SEND_ENCRYPTED_SIGNATURE,
+			RequestMessage: requestMessage,
+		})
 
 		responseEnvelope, respErr = c.rpc.Request(ctx, c.getServerURL(), requestEnvelope)
 
@@ -261,24 +297,32 @@ func (c *Instance) Call(ctx context.Context, requests ...*protos.Request) (*prot
 	return responseEnvelope, respErr
 }
 
+func (c *Instance) Call(ctx context.Context, requests ...*protos.Request) (*protos.ResponseEnvelope, error) {
+	return c.call(ctx, requests, nil)
+}
+
+func (c *Instance) CallWithPlatformRequests(ctx context.Context, requests []*protos.Request, prs []*protos.RequestEnvelope_PlatformRequest) (*protos.ResponseEnvelope, error) {
+	return c.call(ctx, requests, prs)
+}
+
 func (c *Instance) shouldAddPtr8(requests []*protos.Request) bool {
 	if len(requests) == 1 && requests[0].RequestType == protos.RequestType_GET_PLAYER {
 		return true
 	}
 
-	hasMap := false
-	for _, req := range requests {
-		if req.RequestType == protos.RequestType_GET_MAP_OBJECTS {
-			return true
-		}
-	}
+	// hasMap := false
+	// for _, req := range requests {
+	// 	if req.RequestType == protos.RequestType_GET_MAP_OBJECTS {
+	// 		return true
+	// 	}
+	// }
 
-	if hasMap {
-		if !c.firstGetMap {
-			return true
-		}
-		c.firstGetMap = false
-	}
+	// if hasMap {
+	// 	if !c.firstGetMap {
+	// 		return true
+	// 	}
+	// 	c.firstGetMap = false
+	// }
 
 	return false
 }

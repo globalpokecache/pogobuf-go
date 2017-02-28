@@ -30,15 +30,24 @@ type loginRequest struct {
 
 // Provider contains data about and manages the session with the Pokémon Trainer's Club
 type Provider struct {
+	username, password string
 }
 
 // NewProvider constructs a Pokémon Trainer's Club auth provider instance
-func NewProvider() *Provider {
-	return &Provider{}
+func NewProvider(username, password string) *Provider {
+	return &Provider{username, password}
+}
+
+func (p *Provider) Type() string {
+	return "ptc"
+}
+
+func (p *Provider) GetUsername() string {
+	return p.username
 }
 
 // Login retrieves an access token from the Pokémon Trainer's Club
-func (p *Provider) Login(ctx context.Context, username, password string) (string, error) {
+func (p *Provider) Login(ctx context.Context) (string, error) {
 	options := &cookiejar.Options{}
 	jar, _ := cookiejar.New(options)
 	httpClient := &http.Client{
@@ -66,8 +75,8 @@ func (p *Provider) Login(ctx context.Context, username, password string) (string
 	loginForm.Set("lt", loginRespBody.Lt)
 	loginForm.Set("execution", loginRespBody.Execution)
 	loginForm.Set("_eventId", "submit")
-	loginForm.Set("username", username)
-	loginForm.Set("password", password)
+	loginForm.Set("username", p.username)
+	loginForm.Set("password", p.password)
 
 	loginFormData := strings.NewReader(loginForm.Encode())
 

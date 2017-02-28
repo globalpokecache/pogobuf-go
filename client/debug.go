@@ -12,7 +12,7 @@ var (
 )
 
 func debugProto(action string, proto proto.Message) {
-	if Debug {
+	if Debug && proto != nil {
 		debug, err := protoDebug.MarshalToString(proto)
 		if err != nil {
 			return

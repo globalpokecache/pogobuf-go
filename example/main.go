@@ -16,11 +16,10 @@ const (
 
 func main() {
 	ctx := context.Background()
-	ptc, err := auth.NewProvider("ptc")
+	ptc, err := auth.NewProvider("ptc", "INSERT-YOUR-DUMMY-ACCOUNT", "INSERT-YOUR-DUMMY-ACCOUNT-PASSWORD")
 	if err != nil {
 		log.Fatal("Failed to create PTC provivder")
 	}
-	token, err := ptc.Login(ctx, "INSERT-YOUR-DUMMY-ACCOUNT", "INSERT-YOUR-DUMMY-ACCOUNT-PASSWORD")
 
 	hp, err := hash.NewProvider("buddyauth", apiVersion)
 	if err != nil {
@@ -31,8 +30,7 @@ func main() {
 
 	client.Debug = true
 	cli, err := client.New(&client.Options{
-		AuthType:     "ptc",
-		AuthToken:    token,
+		AuthProvider: ptc,
 		HashProvider: hp,
 		Version:      apiVersion,
 	})
@@ -45,7 +43,7 @@ func main() {
 	radius := 150.0
 
 	cli.SetPosition(latitude, longitude, 0, 0)
-	cli.Init(ctx, "INSERT-YOUR-NICKNAME-TO-AUTO-COMPLETE-TUTORIAL")
+	cli.Init(ctx)
 
 	cells := helpers.GetCellsFromRadius(latitude, longitude, radius, 17)
 	_, err = cli.GetMapObjects(ctx, cells, make([]int64, len(cells)))
