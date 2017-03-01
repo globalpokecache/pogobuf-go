@@ -19,10 +19,8 @@ typedef struct cipher8_t {
 
 cipher8_t cipher8_from_iv(uint8_t* iv) {
 	cipher8_t cipher8;
-	size_t ii;
-	size_t jj;
-	for (ii = 0; ii < 8; ++ii) {
-		for (jj = 0; jj < 32; ++jj) {
+	for (size_t ii = 0; ii < 8; ++ii) {
+		for (size_t jj = 0; jj < 32; ++jj) {
 			cipher8.cipher[32 * ii + jj] = rotl8(iv[jj], ii);
 		}
 	}
@@ -31,26 +29,18 @@ cipher8_t cipher8_from_iv(uint8_t* iv) {
 
 cipher8_t cipher8_from_rand(uint32_t* rand) {
 	cipher8_t cipher8;
-	size_t ii;
-	for (ii = 0; ii < 256; ++ii) {
+	for (size_t ii = 0; ii < 256; ++ii) {
 		cipher8.cipher[ii] = gen_rand(rand);
 	}
 	return cipher8;
 }
 
-char make_integrity_byte(byte) {
-	return byte & 0xe3 | 0x10;
+char make_integrity_byte1(char byte) {
+	return byte & 0xf3 | 0x08;
 }
 
-void dump(char* vector, int len) {
-	int ii;
-	for (ii = 0; ii < len; ++ii) {
-		if (ii > 0) {
-			printf((ii % 32) ? " " : "\n");
-		}
-		printf("%02x", (unsigned char)vector[ii]);
-	}
-	printf("\n");
+char make_integrity_byte2(char byte) {
+	return byte & 0xe3 | 0x10;
 }
 
 /**
@@ -60,22 +50,19 @@ void dump(char* vector, int len) {
  * output:   location to store encrypted payload
  * returns:  length of `output`
  *
- * note: This is "version 3". Encryption of previous versions is no longer supported.
  * note: This function will allocate memory for you, you must manually call `free` on `output` when
  *       you are done with it.
  */
-
-int encrypt(const char* input, size_t len, uint32_t ms, char** output) {
+int encrypt(const char* input, size_t len, uint32_t ms, char** output, char version) {
 
 	// Sanity checks
 	if (len == 0) {
 		return 0;
 	}
-	
+
 	// Allocate output space
 	size_t rounded_size = len + (256 - (len % 256));
 	size_t total_size = rounded_size + 5;
-
 	*output = (char*)malloc(total_size + 3);
 	uint8_t* output8 = (uint8_t*)*output;
 	uint32_t* output32 = (uint32_t*)*output;
@@ -94,19 +81,20 @@ int encrypt(const char* input, size_t len, uint32_t ms, char** output) {
 	cipher8_t cipher8_tmp = cipher8_from_rand(&ms);
 	uint8_t* cipher8 = cipher8_tmp.cipher;
 	uint32_t* cipher32 = (uint32_t*)cipher8;
-	output8[total_size - 1] = make_integrity_byte(gen_rand(&ms));
+	if (version == 2) {
+		output8[total_size - 1] = make_integrity_byte1(gen_rand(&ms));
+	} else {
+		output8[total_size - 1] = make_integrity_byte2(gen_rand(&ms));
+	}
 
 	// Encrypt in chunks of 256 bytes
-	size_t offset;
-	size_t ii;
-	for (offset = 4; offset < total_size - 1; offset += 256) {
-		for (ii = 0; ii < 64; ++ii) {
+	for (size_t offset = 4; offset < total_size - 1; offset += 256) {
+		for (size_t ii = 0; ii < 64; ++ii) {
 			output32[offset / 4 + ii] ^= cipher32[ii];
 		}
 		shuffle2((uint32_t*)(output8 + offset));
 		memcpy(cipher8, output8 + offset, 256);
 	}
-
 	return total_size;
 }
 
@@ -155,7 +143,7 @@ int decrypt(const char* input, size_t len, char** output) {
 		memcpy(*output, input + 4, output_len);
 		uint32_t ms = ntohl(((uint32_t*)input)[0]);
 		cipher8_tmp = cipher8_from_rand(&ms);
-		if (input[len - 1] != make_integrity_byte(gen_rand(&ms))) {
+		if (input[len - 1] != make_integrity_byte2(gen_rand(&ms) && input[len - 1] != make_integrity_byte1(gen_rand(&ms)))) {
 			return -3;
 		}
 	}
@@ -165,9 +153,7 @@ int decrypt(const char* input, size_t len, char** output) {
 	uint32_t* output32 = (uint32_t*)*output;
 	
 	// Decrypt in chunks of 256 bytes
-	size_t offset;
-	size_t ii;
-	for (offset = 0; offset < output_len; offset += 256) {
+	for (size_t offset = 0; offset < output_len; offset += 256) {
 		uint8_t tmp[256];
 		memcpy(tmp, output8 + offset, 256);
 		if (version == 1) {
@@ -175,7 +161,7 @@ int decrypt(const char* input, size_t len, char** output) {
 		} else {
 			unshuffle2(output32 + offset / 4);
 		}
-		for (ii = 0; ii < 64; ++ii) {
+		for (size_t ii = 0; ii < 64; ++ii) {
 			output32[offset / 4 + ii] ^= cipher32[ii];
 		}
 		memcpy(cipher32, tmp, 256);

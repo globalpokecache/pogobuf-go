@@ -125,6 +125,12 @@ func (c *Instance) Init(ctx context.Context) (*protos.GetPlayerResponse, error) 
 		return nil, err
 	}
 
+	token, err := c.options.AuthProvider.Login(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.SetAuthToken(token)
+
 	c.sessionHash = shash
 	c.ptr8 = "90f6a704505bccac73cec99b07794993e6fd5a12"
 	c.rpcID = 1
@@ -137,12 +143,6 @@ func (c *Instance) Init(ctx context.Context) (*protos.GetPlayerResponse, error) 
 	if c.locationFixerStop != nil {
 		c.locationFixerStop <- struct{}{}
 	}
-
-	token, err := c.options.AuthProvider.Login(ctx)
-	if err != nil {
-		return nil, err
-	}
-	c.SetAuthToken(token)
 
 	locationFixerStop := make(chan struct{})
 	go c.locationFixer(locationFixerStop)
@@ -275,7 +275,7 @@ func (c *Instance) Init(ctx context.Context) (*protos.GetPlayerResponse, error) 
 }
 
 func (c *Instance) GetMap(ctx context.Context) (*protos.GetMapObjectsResponse, *protos.ResponseEnvelope, error) {
-	cells := helpers.GetCellsFromRadius(c.player.Latitude, c.player.Longitude, 500, 15)
+	cells := helpers.GetCellsFromRadius(c.player.Latitude, c.player.Longitude, 640, 15)
 	var response *protos.ResponseEnvelope
 
 	getMapReq, err := c.GetMapObjectsRequest(cells, make([]int64, len(cells)))

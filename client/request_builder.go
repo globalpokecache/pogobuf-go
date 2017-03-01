@@ -127,7 +127,7 @@ func (c *Instance) call(ctx context.Context, requests []*protos.Request, prs []*
 	c.locationFixSync.Unlock()
 
 	for i := 0; i <= c.options.MaxTries; i++ {
-		time.Sleep(time.Duration(i*900) * time.Millisecond)
+		time.Sleep(time.Duration(i*300) * time.Millisecond)
 
 		t := getTimestamp(time.Now())
 
@@ -191,28 +191,36 @@ func (c *Instance) call(ctx context.Context, requests []*protos.Request, prs []*
 			ActivityStatus: &protos.Signature_ActivityStatus{
 				Stationary: true,
 			},
-			SensorInfo: []*protos.Signature_SensorInfo{
-				{
-					TimestampSnapshot:     sensorTS,
-					LinearAccelerationX:   randTriang(-1.7, 1.2, 0),
-					LinearAccelerationY:   randTriang(-1.4, 1.9, 0),
-					LinearAccelerationZ:   randTriang(-1.4, .9, 0),
-					MagneticFieldX:        randTriang(-54, 50, 0),
-					MagneticFieldY:        randTriang(-51, 57, -4.8),
-					MagneticFieldZ:        randTriang(-56, 43, -30),
-					MagneticFieldAccuracy: []int32{-1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2}[randInt(8)],
-					AttitudePitch:         randTriang(-1.5, 1.5, 0.4),
-					AttitudeYaw:           randTriang(-3.1, 3.1, .198),
-					AttitudeRoll:          randTriang(-2.8, 3.04, 0),
-					RotationRateX:         randTriang(-4.7, 3.9, 0),
-					RotationRateY:         randTriang(-4.7, 4.3, 0),
-					RotationRateZ:         randTriang(-4.7, 6.5, 0),
-					GravityX:              randTriang(-1, 1, 0),
-					GravityY:              randTriang(-1, 1, -.2),
-					GravityZ:              randTriang(-1, .7, -0.7),
-					Status:                3,
-				},
+		}
+
+		signature.SensorInfo = []*protos.Signature_SensorInfo{
+			{
+				TimestampSnapshot:   sensorTS,
+				LinearAccelerationX: randTriang(-1.7, 1.2, 0),
+				LinearAccelerationY: randTriang(-1.4, 1.9, 0),
+				LinearAccelerationZ: randTriang(-1.4, .9, 0),
+				AttitudePitch:       randTriang(-1.5, 1.5, 0.4),
+				AttitudeYaw:         randTriang(-3.1, 3.1, .198),
+				AttitudeRoll:        randTriang(-2.8, 3.04, 0),
+				RotationRateX:       randTriang(-4.7, 3.9, 0),
+				RotationRateY:       randTriang(-4.7, 4.3, 0),
+				RotationRateZ:       randTriang(-4.7, 6.5, 0),
+				GravityX:            randTriang(-1, 1, 0),
+				GravityY:            randTriang(-1, 1, -.2),
+				GravityZ:            randTriang(-1, .7, -0.7),
+				Status:              3,
 			},
+		}
+
+		if len(signature.SensorInfo) > 0 {
+			if c.rpcID == 2 {
+				signature.SensorInfo[0].MagneticFieldAccuracy = -1
+			} else {
+				signature.SensorInfo[0].MagneticFieldX = randTriang(-54, 50, 0)
+				signature.SensorInfo[0].MagneticFieldY = randTriang(-51, 57, -4.8)
+				signature.SensorInfo[0].MagneticFieldZ = randTriang(-56, 43, -30)
+				signature.SensorInfo[0].MagneticFieldAccuracy = []int32{-1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2}[randInt(8)]
+			}
 		}
 
 		if requests != nil && len(requests) > 0 {
