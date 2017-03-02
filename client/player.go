@@ -2,6 +2,9 @@ package client
 
 import (
 	"sync"
+
+	"context"
+	"googlemaps.github.io/maps"
 )
 
 type Player struct {
@@ -9,8 +12,9 @@ type Player struct {
 	Latitude, Longitude, Accuracy, Altitude float64
 }
 
-func (c *Instance) SetPosition(lat, lon, accu, alt float64) {
+func (c *Instance) SetPosition(ctx context.Context, lat, lon, accu, alt float64) {
 	c.player.Lock()
+	defer c.player.Unlock()
 	c.player.Latitude = lat
 	c.player.Longitude = lon
 	if accu > 0 {
@@ -19,5 +23,22 @@ func (c *Instance) SetPosition(lat, lon, accu, alt float64) {
 	if alt > 0 {
 		c.player.Altitude = alt
 	}
-	c.player.Unlock()
+	if c.options.GoogleMapsKey != "" {
+		cli, err := maps.NewClient(maps.WithAPIKey(c.options.GoogleMapsKey))
+		if err != nil {
+			return
+		}
+		r := &maps.ElevationRequest{
+			Locations: []maps.LatLng{
+				{lat, lon},
+			},
+		}
+		resp, err := cli.Elevation(ctx, r)
+		if err != nil {
+			return
+		}
+		if len(resp) > 0 {
+			c.player.Altitude = resp[0].Elevation
+		}
+	}
 }

@@ -18,7 +18,7 @@ func (c *Instance) locationFixer(quit chan struct{}) {
 
 		t := getTimestamp(time.Now())
 
-		moving := (lastpos[0] != c.player.Latitude) && (lastpos[1] != c.player.Longitude)
+		moving := (lastpos[0] != c.player.Latitude) || (lastpos[1] != c.player.Longitude)
 		c.player.Lock()
 		lastpos[0] = c.player.Latitude
 		lastpos[1] = c.player.Longitude
@@ -41,7 +41,11 @@ func (c *Instance) locationFixer(quit chan struct{}) {
 			if !junk {
 				fix.Latitude = float32(c.player.Latitude)
 				fix.Longitude = float32(c.player.Longitude)
-				fix.Altitude = float32(randTriang(300, 400, 350))
+				if c.player.Altitude > 0 {
+					fix.Altitude = float32(c.player.Altitude)
+				} else {
+					fix.Altitude = float32(randTriang(300, 400, 350))
+				}
 			}
 
 			if randFloat() < 0.95 {

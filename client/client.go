@@ -16,10 +16,13 @@ import (
 )
 
 type Options struct {
-	Version       int
-	SignatureInfo SignatureInfo
-	AuthProvider  auth.Provider
-	HashProvider  hash.Provider
+	Version              int
+	SignatureInfo        SignatureInfo
+	AuthProvider         auth.Provider
+	HashProvider         hash.Provider
+	SimulateApp          bool
+	AutoCompleteTutorial bool
+	GoogleMapsKey        string
 
 	MaxTries             int
 	MapObjectsMinDelay   time.Duration
@@ -34,7 +37,12 @@ var (
 		MaxTries:             3,
 		MapObjectsMinDelay:   5 * time.Second,
 		MapObjectsThrottling: true,
+		SimulateApp:          false,
+		AutoCompleteTutorial: false,
 	}
+
+	DefaultPtr8             = "90f6a704505bccac73cec99b07794993e6fd5a12"
+	DefaultLehmerSeed int64 = 16807
 )
 
 type Instance struct {
@@ -89,8 +97,10 @@ func New(opts *Options) (*Instance, error) {
 	}
 
 	return &Instance{
-		options: *opts,
-		rpc:     NewRPC(),
+		options:    *opts,
+		rpc:        NewRPC(),
+		lehmerSeed: DefaultLehmerSeed,
+		ptr8:       DefaultPtr8,
 	}, nil
 }
 
@@ -118,42 +128,11 @@ func (c *Instance) BuildCommon(init bool) []*protos.Request {
 	return reqs
 }
 
-func (c *Instance) Init(ctx context.Context) (*protos.GetPlayerResponse, error) {
-	shash := make([]byte, 16)
-	_, err := rand.Read(shash)
-	if err != nil {
-		return nil, err
-	}
-
-	token, err := c.options.AuthProvider.Login(ctx)
-	if err != nil {
-		return nil, err
-	}
-	c.SetAuthToken(token)
-
-	c.sessionHash = shash
-	c.ptr8 = "90f6a704505bccac73cec99b07794993e6fd5a12"
-	c.rpcID = 1
-	c.lehmerSeed = 16807
-	c.lastLocationFixTime = 0
-	c.inventoryTimestamp = 0
-	c.firstGetMap = true
-	c.startedTime = getTimestamp(time.Now()) - uint64(5000+randInt(800))
-
-	if c.locationFixerStop != nil {
-		c.locationFixerStop <- struct{}{}
-	}
-
-	locationFixerStop := make(chan struct{})
-	go c.locationFixer(locationFixerStop)
-	c.locationFixerStop = locationFixerStop
-
+func (c *Instance) simulateAppLogin(ctx context.Context) (*protos.GetPlayerResponse, error) {
 	c.Call(ctx)
 
-	var response *protos.ResponseEnvelope
-
 	getPlayerReq, _ := c.GetPlayerRequest("US", "en", "America/Chicago")
-	response, err = c.Call(ctx, getPlayerReq)
+	response, err := c.Call(ctx, getPlayerReq)
 	if err != nil {
 		return nil, err
 	}
@@ -167,8 +146,6 @@ func (c *Instance) Init(ctx context.Context) (*protos.GetPlayerResponse, error) 
 	if getPlayer.Banned {
 		return nil, pogobuf.ErrAccountBanned
 	}
-
-	time.Sleep(1500 * time.Millisecond)
 
 	downloadRemoteConfigReq, _ := c.DownloadRemoteConfigVersionRequest(protos.Platform_IOS, c.options.Version)
 	downloadSettings, _ := c.DownloadSettingsRequest("")
@@ -250,9 +227,11 @@ func (c *Instance) Init(ctx context.Context) (*protos.GetPlayerResponse, error) 
 		return nil, errors.New("Failed to initialize real player client")
 	}
 
-	err = c.completeTutorial(ctx, getPlayer.PlayerData.TutorialState, c.options.AuthProvider.GetUsername())
-	if err != nil {
-		return nil, err
+	if c.options.AutoCompleteTutorial {
+		err = c.completeTutorial(ctx, getPlayer.PlayerData.TutorialState, c.options.AuthProvider.GetUsername())
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	getBuddyWalkedReq, _ := c.GetBuddyWalkedRequest()
@@ -272,6 +251,71 @@ func (c *Instance) Init(ctx context.Context) (*protos.GetPlayerResponse, error) 
 	})
 
 	return &getPlayer, nil
+}
+
+func (c *Instance) minimalLogin(ctx context.Context) (*protos.GetPlayerResponse, error) {
+	getPlayerReq, _ := c.GetPlayerRequest("US", "en", "America/Chicago")
+	response, err := c.Call(ctx, getPlayerReq)
+	if err != nil {
+		return nil, err
+	}
+
+	var getPlayer protos.GetPlayerResponse
+	err = proto.Unmarshal(response.Returns[0], &getPlayer)
+	if err != nil {
+		return nil, err
+	}
+
+	if getPlayer.Banned {
+		return nil, pogobuf.ErrAccountBanned
+	}
+
+	if c.options.AutoCompleteTutorial {
+		err = c.completeTutorial(ctx, getPlayer.PlayerData.TutorialState, c.options.AuthProvider.GetUsername())
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return &getPlayer, nil
+}
+
+func (c *Instance) Init(ctx context.Context) (*protos.GetPlayerResponse, error) {
+	shash := make([]byte, 16)
+	_, err := rand.Read(shash)
+	if err != nil {
+		return nil, err
+	}
+
+	token, err := c.options.AuthProvider.Login(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.SetAuthToken(token)
+
+	c.sessionHash = shash
+	c.ptr8 = DefaultPtr8
+	c.rpcID = 1
+	c.lehmerSeed = DefaultLehmerSeed
+	c.lastLocationFixTime = 0
+	c.inventoryTimestamp = 0
+	c.firstGetMap = true
+	c.startedTime = getTimestamp(time.Now()) - uint64(5000+randInt(800))
+
+	if c.locationFixerStop != nil {
+		c.locationFixerStop <- struct{}{}
+	}
+
+	locationFixerStop := make(chan struct{})
+	go c.locationFixer(locationFixerStop)
+	c.locationFixerStop = locationFixerStop
+
+	if c.options.SimulateApp {
+		return c.simulateAppLogin(ctx)
+	}
+
+	return c.minimalLogin(ctx)
+
 }
 
 func (c *Instance) GetMap(ctx context.Context) (*protos.GetMapObjectsResponse, *protos.ResponseEnvelope, error) {

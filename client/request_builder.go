@@ -34,15 +34,21 @@ func (c *Instance) setURL(urlToken string) {
 }
 
 var (
-	lM int64 = 0x7fffffff
-	lA int64 = 16807
+	lMultiplier int64 = 16807
+	lModulus    int64 = 0x7fffffff
+	lMq               = lModulus / lMultiplier
+	lMr               = lModulus % lMultiplier
 )
 
-func (c *Instance) getRequestId() uint64 {
-	c.lehmerSeed = (c.lehmerSeed * lA) % lM
-	r := c.lehmerSeed
+func (c *Instance) getRequestId() int64 {
+	var temp = lMultiplier*(c.lehmerSeed%lMq) - (lMr * (c.lehmerSeed / lMq))
+	if temp > 0 {
+		c.lehmerSeed = temp
+	} else {
+		c.lehmerSeed = temp + lModulus
+	}
 	c.rpcID++
-	return uint64((r << 32) | c.rpcID)
+	return (c.lehmerSeed << 32) | int64(c.rpcID)
 }
 
 var randAccuSeed = []int{5, 5, 5, 5, 10, 10, 10, 30, 30, 50, 65}
@@ -64,7 +70,7 @@ func (c *Instance) call(ctx context.Context, requests []*protos.Request, prs []*
 	c.player.Unlock()
 
 	requestEnvelope := &protos.RequestEnvelope{
-		RequestId:  c.getRequestId(),
+		RequestId:  uint64(c.getRequestId()),
 		StatusCode: int32(2),
 	}
 

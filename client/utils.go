@@ -27,6 +27,12 @@ func randInt(l int) int {
 	return r1.Intn(l)
 }
 
+func randInt64(l int64) int64 {
+	var s1 = rand.NewSource(time.Now().UnixNano())
+	var r1 = rand.New(s1)
+	return r1.Int63n(l)
+}
+
 func randFloat() float64 {
 	var s1 = rand.NewSource(time.Now().UnixNano())
 	var r1 = rand.New(s1)
