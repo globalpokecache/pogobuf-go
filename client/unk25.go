@@ -6,6 +6,8 @@ import (
 
 func getUnk25(version int) (int64, error) {
 	switch version {
+	case 5704:
+		return -816976800928766045, nil
 	case 5703:
 		return -816976800928766045, nil
 	case 5702:
