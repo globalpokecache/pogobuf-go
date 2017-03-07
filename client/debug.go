@@ -8,6 +8,7 @@ import (
 
 var (
 	Debug      = false
+	DebugGMO   = false
 	protoDebug = &jsonpb.Marshaler{Indent: "\t"}
 )
 

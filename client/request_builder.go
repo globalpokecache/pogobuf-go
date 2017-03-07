@@ -314,7 +314,9 @@ func (c *Instance) call(ctx context.Context, requests []*protos.Request, prs []*
 			continue
 		}
 
-		if responseEnvelope.StatusCode == protos.ResponseEnvelope_INVALID_PLATFORM_REQUEST {
+		if responseEnvelope.StatusCode == protos.ResponseEnvelope_INVALID_AUTH_TOKEN {
+			c.authTicket = nil
+			c.login(ctx)
 			continue
 		}
 

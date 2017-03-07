@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 
+	"fmt"
 	"github.com/globalpokecache/POGOProtos-go"
 )
 
@@ -109,6 +110,7 @@ func (c *Instance) completeTutorial(ctx context.Context, tutorialState []protos.
 	if _, ok := tuto[protos.TutorialState_POKEMON_CAPTURE]; !ok {
 		randSleep(700, 900)
 
+		fmt.Println(assets)
 		getDownloadsURLs, err := c.GetDownloadURLsRequest(assets)
 		if err != nil {
 			return false, err

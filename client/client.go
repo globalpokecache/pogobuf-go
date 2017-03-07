@@ -115,7 +115,6 @@ func (c *Instance) BuildCommon(init bool) []*protos.Request {
 	getInventory, _ := c.GetInventoryRequest(c.inventoryTimestamp)
 	checkAwarded, _ := c.CheckAwardedBadgesRequest()
 	downloadSettings, _ := c.DownloadSettingsRequest(downloadSettingsHash)
-	getBuddyWalkedReq, _ := c.GetBuddyWalkedRequest()
 
 	reqs := []*protos.Request{
 		checkChallenge,
@@ -126,8 +125,6 @@ func (c *Instance) BuildCommon(init bool) []*protos.Request {
 
 	if init {
 		reqs = append(reqs, downloadSettings)
-	} else {
-		reqs = append(reqs, getBuddyWalkedReq)
 	}
 
 	return reqs
@@ -318,6 +315,25 @@ func (c *Instance) minimalLogin(ctx context.Context) (*protos.GetPlayerResponse,
 	return &getPlayer, nil
 }
 
+func (c *Instance) newSessionHash() error {
+	shash := make([]byte, 16)
+	_, err := rand.Read(shash)
+	if err != nil {
+		return err
+	}
+	c.sessionHash = shash
+	return nil
+}
+
+func (c *Instance) login(ctx context.Context) error {
+	token, err := c.options.AuthProvider.Login(ctx)
+	if err != nil {
+		return err
+	}
+	c.SetAuthToken(token)
+	return nil
+}
+
 func (c *Instance) Init(ctx context.Context) (*protos.GetPlayerResponse, error) {
 	if c.cancel != nil {
 		c.cancel()
@@ -326,19 +342,13 @@ func (c *Instance) Init(ctx context.Context) (*protos.GetPlayerResponse, error) 
 	ctx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
 
-	shash := make([]byte, 16)
-	_, err := rand.Read(shash)
+	c.login(ctx)
+
+	err := c.newSessionHash()
 	if err != nil {
 		return nil, err
 	}
 
-	token, err := c.options.AuthProvider.Login(ctx)
-	if err != nil {
-		return nil, err
-	}
-	c.SetAuthToken(token)
-
-	c.sessionHash = shash
 	c.ptr8 = DefaultPtr8
 	c.rpcID = 1
 	c.lehmerSeed = DefaultLehmerSeed
@@ -401,7 +411,9 @@ func (c *Instance) GetMap(ctx context.Context) (*protos.GetMapObjectsResponse, *
 		return nil, response, fmt.Errorf("Failed to parse GET_MAP_OBJECTS: %s", err)
 	}
 
-	// debugProto("MapObjects", &getMapObjects)
+	if DebugGMO {
+		debugProto("MapObjects", &getMapObjects)
+	}
 
 	return &getMapObjects, response, nil
 }
