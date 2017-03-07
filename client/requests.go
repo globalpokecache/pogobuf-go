@@ -911,6 +911,47 @@ func (c *Instance) SetAvatar(ctx context.Context, skin, hair, shirt, pants, hat,
 	return &setAvatar, nil
 }
 
+func (c *Instance) ListAvatarCustomizationsRequest(genre int, slots []protos.Slot, filters []protos.Filter) (*protos.Request, error) {
+	msg, err := proto.Marshal(&protos.ListAvatarCustomizationsMessage{
+		AvatarType: protos.PlayerAvatarType(genre),
+		Slot:       slots,
+		Filters:    filters,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create LIST_AVATAR_CUSTOMIZATIONS: %s", err)
+	}
+
+	return &protos.Request{
+		RequestType:    protos.RequestType_LIST_AVATAR_CUSTOMIZATIONS,
+		RequestMessage: msg,
+	}, nil
+}
+
+func (c *Instance) ListAvatarCustomizations(ctx context.Context, genre int, slots []protos.Slot, filters []protos.Filter) (*protos.ListAvatarCustomizationsResponse, error) {
+	request, err := c.ListAvatarCustomizationsRequest(genre, slots, filters)
+	if err != nil {
+		return nil, err
+	}
+
+	var response *protos.ResponseEnvelope
+	response, err = c.Call(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(response.Returns) == 0 {
+		return nil, errors.New("Server not accepted this request")
+	}
+
+	var list protos.ListAvatarCustomizationsResponse
+	err = proto.Unmarshal(response.Returns[0], &list)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to call LIST_AVATAR_CUSTOMIZATIONS: %s", err)
+	}
+
+	return &list, nil
+}
+
 func (c *Instance) GetDownloadURLsRequest(ids []string) (*protos.Request, error) {
 	msg, err := proto.Marshal(&protos.GetDownloadUrlsMessage{
 		AssetId: ids,

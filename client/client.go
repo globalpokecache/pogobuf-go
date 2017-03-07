@@ -26,6 +26,7 @@ type Options struct {
 
 	MaxTries             int
 	MapObjectsMinDelay   time.Duration
+	MinRequestInterval   time.Duration
 	MapObjectsThrottling bool
 }
 
@@ -39,6 +40,7 @@ var (
 		MapObjectsThrottling: true,
 		SimulateApp:          false,
 		AutoCompleteTutorial: false,
+		MinRequestInterval:   500 * time.Millisecond,
 	}
 
 	DefaultPtr8             = "90f6a704505bccac73cec99b07794993e6fd5a12"
@@ -62,13 +64,15 @@ type Instance struct {
 	serverURL          string
 	firstGetMap        bool
 	mapSettings        protos.MapSettings
+	waitRequest        chan struct{}
 
 	locationFixSync     sync.Mutex
 	lastLocationCourse  float32
 	lastLocationFixTime uint64
 	lastLocationFix     *protos.Signature_LocationFix
 	locationFixes       []*protos.Signature_LocationFix
-	locationFixerStop   chan struct{}
+
+	cancel func()
 }
 
 func New(opts *Options) (*Instance, error) {
@@ -97,10 +101,11 @@ func New(opts *Options) (*Instance, error) {
 	}
 
 	return &Instance{
-		options:    *opts,
-		rpc:        NewRPC(),
-		lehmerSeed: DefaultLehmerSeed,
-		ptr8:       DefaultPtr8,
+		options:     *opts,
+		rpc:         NewRPC(),
+		lehmerSeed:  DefaultLehmerSeed,
+		ptr8:        DefaultPtr8,
+		waitRequest: make(chan struct{}),
 	}, nil
 }
 
@@ -131,10 +136,16 @@ func (c *Instance) BuildCommon(init bool) []*protos.Request {
 func (c *Instance) simulateAppLogin(ctx context.Context) (*protos.GetPlayerResponse, error) {
 	c.Call(ctx)
 
+	randSleep(430, 970)
+
 	getPlayerReq, _ := c.GetPlayerRequest("US", "en", "America/Chicago")
 	response, err := c.Call(ctx, getPlayerReq)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(response.Returns) == 0 {
+		return nil, errors.New("Failed to initialize account")
 	}
 
 	var getPlayer protos.GetPlayerResponse
@@ -146,6 +157,8 @@ func (c *Instance) simulateAppLogin(ctx context.Context) (*protos.GetPlayerRespo
 	if getPlayer.Banned {
 		return nil, pogobuf.ErrAccountBanned
 	}
+
+	randSleep(530, 1000)
 
 	downloadRemoteConfigReq, _ := c.DownloadRemoteConfigVersionRequest(protos.Platform_IOS, c.options.Version)
 	downloadSettings, _ := c.DownloadSettingsRequest("")
@@ -175,17 +188,17 @@ func (c *Instance) simulateAppLogin(ctx context.Context) (*protos.GetPlayerRespo
 	}
 	c.inventoryTimestamp = getInventory.InventoryDelta.NewTimestampMs
 
-	var level int32
+	var level *int32
 	for _, item := range getInventory.InventoryDelta.InventoryItems {
 		if item.InventoryItemData.PlayerStats != nil {
-			level = item.InventoryItemData.PlayerStats.Level
+			level = &item.InventoryItemData.PlayerStats.Level
 		}
 	}
 
 	var challengeResponse protos.CheckChallengeResponse
 	err = proto.Unmarshal(response.Returns[1], &challengeResponse)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to call CHECK_CHALLENGE: %s", err)
+		return nil, fmt.Errorf("Failed to unmarshal CHECK_CHALLENGE: %s", err)
 	}
 
 	if challengeResponse.ShowChallenge {
@@ -195,7 +208,7 @@ func (c *Instance) simulateAppLogin(ctx context.Context) (*protos.GetPlayerRespo
 	var downloadResponse protos.DownloadSettingsResponse
 	err = proto.Unmarshal(response.Returns[5], &downloadResponse)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to call DOWNLOAD_SETTINGS: %s", err)
+		return nil, fmt.Errorf("Failed to unmarshal DOWNLOAD_SETTINGS: %s", err)
 	}
 
 	mapSettings := downloadResponse.GetSettings().GetMapSettings()
@@ -215,40 +228,68 @@ func (c *Instance) simulateAppLogin(ctx context.Context) (*protos.GetPlayerRespo
 		return nil, errors.New("Failed to initialize real player client")
 	}
 
-	downloadItemTemplates, _ := c.DownloadItemTemplatesRequest(false, 0, 0)
-	requests = []*protos.Request{downloadItemTemplates}
-	requests = append(requests, c.BuildCommon(true)...)
-	response, err = c.Call(ctx, requests...)
-	if err != nil {
-		return nil, err
-	}
+	randSleep(870, 2000)
 
-	if len(response.Returns) < 6 {
-		return nil, errors.New("Failed to initialize real player client")
-	}
+	getBuddyWalkedReq, _ := c.GetBuddyWalkedRequest()
 
+	var alreadyComplete bool
 	if c.options.AutoCompleteTutorial {
-		err = c.completeTutorial(ctx, getPlayer.PlayerData.TutorialState, c.options.AuthProvider.GetUsername())
+		var assets protos.GetAssetDigestResponse
+		err = proto.Unmarshal(response.Returns[0], &assets)
+		if err != nil {
+			return nil, fmt.Errorf("Failed to call GE: %s", err)
+		}
+
+		var assetsIds []string
+		for _, asset := range assets.Digest {
+			if asset.BundleName == "pm0001" ||
+				asset.BundleName == "pm0004" ||
+				asset.BundleName == "pm0007" {
+				assetsIds = append(assetsIds, asset.AssetId)
+			}
+		}
+		alreadyComplete, err = c.completeTutorial(ctx, getPlayer.PlayerData.TutorialState, c.options.AuthProvider.GetUsername(), assetsIds)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	getBuddyWalkedReq, _ := c.GetBuddyWalkedRequest()
-	levelUpReq, _ := c.LevelUpRewardsRequest(level)
-	requests = append([]*protos.Request{}, levelUpReq)
-	requests = append(requests, c.BuildCommon(true)...)
-	requests = append(requests, getBuddyWalkedReq)
-	response, err = c.Call(ctx, requests...)
-	if err != nil {
-		return nil, err
-	}
+	if !c.options.AutoCompleteTutorial || alreadyComplete {
+		getPlayerProfile, err := c.GetPlayerProfileRequest(c.options.AuthProvider.GetUsername())
+		if err != nil {
+			return nil, err
+		}
+		requests = []*protos.Request{getPlayerProfile}
+		requests = append(requests, c.BuildCommon(true)...)
+		requests = append(requests, getBuddyWalkedReq)
+		_, err = c.Call(ctx, requests...)
+		if err != nil {
+			return nil, err
+		}
+		randSleep(200, 400)
 
-	c.CallWithPlatformRequests(ctx, nil, []*protos.RequestEnvelope_PlatformRequest{
-		{
-			Type: protos.PlatformRequestType_GET_STORE_ITEMS,
-		},
-	})
+		if level != nil {
+			levelUpReq, _ := c.LevelUpRewardsRequest(*level)
+			requests = append([]*protos.Request{}, levelUpReq)
+			requests = append(requests, c.BuildCommon(true)...)
+			requests = append(requests, getBuddyWalkedReq)
+			_, err = c.Call(ctx, requests...)
+			if err != nil {
+				return nil, err
+			}
+			randSleep(450, 700)
+		}
+
+		regBg, _ := c.RegisterBackgroundDeviceRequest("", "apple_watch")
+		requests = append([]*protos.Request{}, regBg)
+		requests = append(requests, c.BuildCommon(true)...)
+		requests = append(requests, getBuddyWalkedReq)
+		_, err = c.Call(ctx, requests...)
+		if err != nil {
+			return nil, err
+		}
+		randSleep(500, 1300)
+	}
 
 	return &getPlayer, nil
 }
@@ -258,6 +299,10 @@ func (c *Instance) minimalLogin(ctx context.Context) (*protos.GetPlayerResponse,
 	response, err := c.Call(ctx, getPlayerReq)
 	if err != nil {
 		return nil, err
+	}
+
+	if len(response.Returns) == 0 {
+		return nil, errors.New("Failed to initialize account")
 	}
 
 	var getPlayer protos.GetPlayerResponse
@@ -270,17 +315,17 @@ func (c *Instance) minimalLogin(ctx context.Context) (*protos.GetPlayerResponse,
 		return nil, pogobuf.ErrAccountBanned
 	}
 
-	if c.options.AutoCompleteTutorial {
-		err = c.completeTutorial(ctx, getPlayer.PlayerData.TutorialState, c.options.AuthProvider.GetUsername())
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return &getPlayer, nil
 }
 
 func (c *Instance) Init(ctx context.Context) (*protos.GetPlayerResponse, error) {
+	if c.cancel != nil {
+		c.cancel()
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	c.cancel = cancel
+
 	shash := make([]byte, 16)
 	_, err := rand.Read(shash)
 	if err != nil {
@@ -302,20 +347,14 @@ func (c *Instance) Init(ctx context.Context) (*protos.GetPlayerResponse, error) 
 	c.firstGetMap = true
 	c.startedTime = getTimestamp(time.Now()) - uint64(5000+randInt(800))
 
-	if c.locationFixerStop != nil {
-		c.locationFixerStop <- struct{}{}
-	}
-
-	locationFixerStop := make(chan struct{})
-	go c.locationFixer(locationFixerStop)
-	c.locationFixerStop = locationFixerStop
+	go c.locationFixer(ctx)
+	go c.requestThrottle(ctx)
 
 	if c.options.SimulateApp {
 		return c.simulateAppLogin(ctx)
 	}
 
 	return c.minimalLogin(ctx)
-
 }
 
 func (c *Instance) GetMap(ctx context.Context) (*protos.GetMapObjectsResponse, *protos.ResponseEnvelope, error) {

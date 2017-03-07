@@ -15,6 +15,10 @@ type Player struct {
 func (c *Instance) SetPosition(ctx context.Context, lat, lon, accu, alt float64) {
 	c.player.Lock()
 	defer c.player.Unlock()
+	moved := false
+	if lat != c.player.Latitude || lon != c.player.Longitude {
+		moved = true
+	}
 	c.player.Latitude = lat
 	c.player.Longitude = lon
 	if accu > 0 {
@@ -22,8 +26,7 @@ func (c *Instance) SetPosition(ctx context.Context, lat, lon, accu, alt float64)
 	}
 	if alt > 0 {
 		c.player.Altitude = alt
-	}
-	if c.options.GoogleMapsKey != "" {
+	} else if c.options.GoogleMapsKey != "" && moved {
 		cli, err := maps.NewClient(maps.WithAPIKey(c.options.GoogleMapsKey))
 		if err != nil {
 			return

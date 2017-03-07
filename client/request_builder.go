@@ -53,7 +53,22 @@ func (c *Instance) getRequestId() int64 {
 
 var randAccuSeed = []int{5, 5, 5, 5, 10, 10, 10, 30, 30, 50, 65}
 
+func (c *Instance) requestThrottle(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+		c.waitRequest <- struct{}{}
+		time.Sleep(c.options.MinRequestInterval)
+	}
+}
+
 func (c *Instance) call(ctx context.Context, requests []*protos.Request, prs []*protos.RequestEnvelope_PlatformRequest) (*protos.ResponseEnvelope, error) {
+	// interval between requests
+	<-c.waitRequest
+
 	var respErr error
 	var responseEnvelope *protos.ResponseEnvelope
 
@@ -275,17 +290,17 @@ func (c *Instance) call(ctx context.Context, requests []*protos.Request, prs []*
 
 		responseEnvelope, respErr = c.rpc.Request(ctx, c.getServerURL(), requestEnvelope)
 
-		for _, pr := range responseEnvelope.PlatformReturns {
-			if pr.Type == protos.PlatformRequestType_UNKNOWN_PTR_8 {
-				var ptr8 protos.UnknownPtr8Response
-				err := proto.Unmarshal(pr.Response, &ptr8)
-				if err == nil {
-					if ptr8.Message != "" {
-						c.ptr8 = ptr8.Message
-					}
-				}
-			}
-		}
+		// for _, pr := range responseEnvelope.PlatformReturns {
+		// 	if pr.Type == protos.PlatformRequestType_UNKNOWN_PTR_8 {
+		// 		var ptr8 protos.UnknownPtr8Response
+		// 		err := proto.Unmarshal(pr.Response, &ptr8)
+		// 		if err == nil {
+		// 			if ptr8.Message != "" {
+		// 				c.ptr8 = ptr8.Message
+		// 			}
+		// 		}
+		// 	}
+		// }
 
 		if responseEnvelope.ApiUrl != "" {
 			c.setURL(responseEnvelope.ApiUrl)

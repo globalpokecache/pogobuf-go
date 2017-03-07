@@ -3,15 +3,16 @@ package client
 import (
 	"time"
 
+	"context"
 	"github.com/globalpokecache/POGOProtos-go"
 	"math"
 )
 
-func (c *Instance) locationFixer(quit chan struct{}) {
+func (c *Instance) locationFixer(ctx context.Context) {
 	lastpos := []float64{c.player.Latitude, c.player.Longitude}
 	for {
 		select {
-		case <-quit:
+		case <-ctx.Done():
 			return
 		default:
 		}

@@ -11,6 +11,10 @@ import (
 	"strings"
 )
 
+func randSleep(low, high int64) {
+	time.Sleep(time.Duration(low+int64(randInt(int(high-low)))) * time.Millisecond)
+}
+
 func randTriang(lower, upper, mode float64) float64 {
 	var c = (mode - lower) / (upper - lower)
 	var u = randFloat()
