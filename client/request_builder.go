@@ -177,11 +177,9 @@ func (c *Instance) call(ctx context.Context, requests []*protos.Request, prs []*
 			sensorTS = sinceStart - uint64(100+randInt(100))
 		}
 
-		if c.lastLocationFix != nil {
-			requestEnvelope.Longitude = long
-			requestEnvelope.Latitude = lat
-			requestEnvelope.Accuracy = randAccu
-		}
+		requestEnvelope.Longitude = long
+		requestEnvelope.Latitude = lat
+		requestEnvelope.Accuracy = randAccu
 		c.locationFixSync.Unlock()
 
 		locHash1, locHash2, requestHash, err := c.options.HashProvider.Hash(

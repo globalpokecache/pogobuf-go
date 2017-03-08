@@ -14,7 +14,7 @@ import (
 )
 
 const authorizeURL = "https://sso.pokemon.com/sso/oauth2.0/accessToken"
-const loginURL = "https://sso.pokemon.com/sso/login?service=https://sso.pokemon.com/sso/oauth2.0/callbackAuthorize"
+const loginURL = "https://sso.pokemon.com/sso/login?locale=en&service=https://sso.pokemon.com/sso/oauth2.0/callbackAuthorize"
 
 const redirectURI = "https://www.nianticlabs.com/pokemongo/error"
 const clientSecret = "w8ScCUXJQc6kXKw8FiOhd8Fixzht18Dq3PEVkUCP5ZPxtgyWsbTvWHFLm2wNY0JR"
