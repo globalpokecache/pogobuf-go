@@ -101,7 +101,7 @@ func (p *Provider) Login(ctx context.Context) (string, error) {
 		return "", errors.New("Could not request authorization")
 	}
 
-	if resp2.Header == nil {
+	if resp2 == nil || resp2.Header == nil {
 		return "", errors.New("Could not request authorization")
 	}
 	location, _ := url.Parse(resp2.Header.Get("Location"))
