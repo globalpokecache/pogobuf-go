@@ -33,9 +33,9 @@ type BuddyKey struct {
 
 type HashRequest struct {
 	Timestamp   uint64   `json:"timestamp"`
-	Latitude    float64  `json:"latitude"`
-	Longitude   float64  `json:"longitude"`
-	Altitude    float64  `json:"altitude"`
+	Latitude    int64    `json:"Latitude64"`
+	Longitude   int64    `json:"Longitude64"`
+	Accuracy    int64    `json:"Accuracy64"`
 	AuthTicket  string   `json:"authTicket"`
 	SessionData string   `json:"sessionData"`
 	Requests    []string `json:"requests"`
@@ -157,7 +157,7 @@ func (p *Provider) ApiURL() string {
 	major := math.Floor(float64(p.version) / 100.0)
 	minor := (float64(p.version)/100.0 - major) * 100
 	v := fmt.Sprintf("0.%.f.%.f", major, minor)
-	return fmt.Sprintf("http://hashing.pogodev.io/%s", versions[v])
+	return fmt.Sprintf("http://pokehash3.buddyauth.com/%s", versions[v])
 }
 
 func (p *Provider) GetAvailableKey() (*BuddyKey, error) {
@@ -287,9 +287,9 @@ func (p *Provider) Hash(authTicket, sessionData []byte, latitude, longitude, acc
 		Timestamp:   timestamp,
 		AuthTicket:  baseAuthTicket,
 		SessionData: baseSessionData,
-		Latitude:    latitude,
-		Longitude:   longitude,
-		Altitude:    accuracy,
+		Latitude:    int64(math.Float64bits(latitude)),
+		Longitude:   int64(math.Float64bits(longitude)),
+		Accuracy:    int64(math.Float64bits(accuracy)),
 		Requests:    reqBases,
 	}
 
