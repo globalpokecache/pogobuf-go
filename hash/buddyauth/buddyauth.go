@@ -157,7 +157,7 @@ func (p *Provider) ApiURL() string {
 	major := math.Floor(float64(p.version) / 100.0)
 	minor := (float64(p.version)/100.0 - major) * 100
 	v := fmt.Sprintf("0.%.f.%.f", major, minor)
-	return fmt.Sprintf("http://pokehash3.buddyauth.com/%s", versions[v])
+	return fmt.Sprintf("http://pokehash.buddyauth.com/%s", versions[v])
 }
 
 func (p *Provider) GetAvailableKey() (*BuddyKey, error) {
