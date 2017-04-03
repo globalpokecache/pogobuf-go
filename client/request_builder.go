@@ -287,6 +287,9 @@ func (c *Instance) call(ctx context.Context, requests []*protos.Request, prs []*
 		})
 
 		responseEnvelope, respErr = c.rpc.Request(ctx, c.getServerURL(), requestEnvelope)
+		if responseEnvelope == nil || respErr != nil {
+			continue
+		}
 
 		// for _, pr := range responseEnvelope.PlatformReturns {
 		// 	if pr.Type == protos.PlatformRequestType_UNKNOWN_PTR_8 {

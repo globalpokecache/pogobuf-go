@@ -21,16 +21,6 @@ type Provider struct {
 	http.Client
 }
 
-type BuddyKey struct {
-	Key       string
-	RPM       int
-	Used      int
-	Count     int
-	NextReset time.Time
-	Invalid   bool
-	Expired   bool
-}
-
 type HashRequest struct {
 	Timestamp   uint64   `json:"timestamp"`
 	Latitude    int64    `json:"Latitude64"`
@@ -82,15 +72,91 @@ func NewProvider(apiVersion int) (*Provider, error) {
 	return provider, nil
 }
 
+type BuddyKey struct {
+	Key       string
+	RPM       int
+	Used      int
+	NextReset time.Time
+	Invalid   bool
+	Expired   bool
+	sync.RWMutex
+}
+
+func (b *BuddyKey) GetRPM() int {
+	b.RLock()
+	defer b.RUnlock()
+	return b.RPM
+}
+
+func (b *BuddyKey) SetRPM(n int) {
+	b.RLock()
+	b.RPM = n
+	b.RUnlock()
+}
+
+func (b *BuddyKey) GetUsed() int {
+	b.RLock()
+	defer b.RUnlock()
+	return b.Used
+}
+
+func (b *BuddyKey) AddUsed(n int) {
+	b.RLock()
+	b.Used += n
+	b.RUnlock()
+}
+
+func (b *BuddyKey) ResetUsed() {
+	b.Lock()
+	b.Used = 0
+	b.Unlock()
+}
+
+func (b *BuddyKey) IsExpired() bool {
+	b.RLock()
+	defer b.RUnlock()
+	return b.Expired
+}
+
+func (b *BuddyKey) SetExpired(v bool) {
+	b.RLock()
+	b.Expired = v
+	b.RUnlock()
+}
+
+func (b *BuddyKey) IsInvalid() bool {
+	b.RLock()
+	defer b.RUnlock()
+	return b.Invalid
+}
+
+func (b *BuddyKey) SetInvalid(v bool) {
+	b.RLock()
+	b.Invalid = v
+	b.RUnlock()
+}
+
+func (b *BuddyKey) GetNextReset() time.Time {
+	b.RLock()
+	defer b.RUnlock()
+	return b.NextReset
+}
+
+func (b *BuddyKey) SetNextReset(t time.Time) {
+	b.RLock()
+	b.NextReset = t
+	b.RUnlock()
+}
+
 type byRPM []*BuddyKey
 
 func (a byRPM) Len() int      { return len(a) }
 func (a byRPM) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
 func (a byRPM) Less(i, j int) bool {
-	if a[i].RPM > a[j].RPM {
+	if a[i].GetRPM() > a[j].GetRPM() {
 		return true
-	} else if a[i].RPM == a[j].RPM {
-		return a[i].Count > a[j].Count
+	} else if a[i].GetRPM() == a[j].GetRPM() {
+		return a[i].GetUsed() > a[j].GetUsed()
 	}
 	return false
 }
@@ -101,7 +167,9 @@ func (p *Provider) GetKeys() []interface{} {
 
 	keys := []interface{}{}
 	for _, key := range p.keys {
-		keys = append(keys, *key)
+		key.Lock()
+		keys = append(keys, key)
+		key.Unlock()
 	}
 	return keys
 }
@@ -173,26 +241,25 @@ func (p *Provider) GetAvailableKey() (*BuddyKey, error) {
 
 		if key.NextReset.Before(time.Now().UTC()) {
 			debug("Resetting key: %s", key.Key)
-			key.NextReset = time.Now().UTC().Add(1 * time.Minute)
-			key.Used = 0
-			key.Count = 0
+			key.SetNextReset(time.Now().UTC().Add(1 * time.Minute))
+			key.ResetUsed()
 		}
 
-		if !key.Expired && !key.Invalid && key.Used < key.RPM {
+		if !key.IsExpired() && !key.IsInvalid() && key.GetUsed() < key.GetRPM() {
 			debug("Found valid key: %s", key.Key)
 			found = true
 			break
 		}
 
-		if key.Expired {
+		if key.IsExpired() {
 			errs = append(errs, fmt.Sprintf("%s:%s", key.Key[0:6]+"..."+key.Key[len(key.Key)-6:len(key.Key)-1], "EXPIRED_KEY"))
 		}
 
-		if key.Invalid {
+		if key.IsInvalid() {
 			errs = append(errs, fmt.Sprintf("%s:%s", key.Key[0:6]+"..."+key.Key[len(key.Key)-6:len(key.Key)-1], "INVALID_KEY"))
 		}
 
-		if key.Used >= key.RPM {
+		if key.GetUsed() >= key.GetRPM() {
 			errs = append(errs, fmt.Sprintf("%s:%s", key.Key[0:6]+"..."+key.Key[len(key.Key)-6:len(key.Key)-1], "EXHAUSTED_KEY"))
 		}
 
@@ -203,8 +270,7 @@ func (p *Provider) GetAvailableKey() (*BuddyKey, error) {
 		return nil, fmt.Errorf("%s: %v", ErrNoAvailableKey, errs)
 	}
 
-	key.Used++
-	key.Count++
+	key.AddUsed(1)
 	return key, nil
 }
 
@@ -243,14 +309,20 @@ func (p *Provider) hashRequest(hashReq HashRequest, key *BuddyKey) (HashResponse
 		debug("Received header:", resp.Header)
 
 		if time.Unix(authtokenexpiration, -1).Before(time.Now()) {
-			key.Expired = true
+			key.SetExpired(true)
 		}
 
-		key.RPM = int(maxrequestcount)
-		used := key.RPM - int(remaining)
+		if key.GetRPM() != int(maxrequestcount) {
+			key.SetRPM(int(maxrequestcount))
+		}
 
-		if used > key.Used {
-			key.Used = used
+		if key.GetUsed() != int(remaining) {
+			used := key.GetRPM() - int(remaining)
+
+			if used > key.GetUsed() {
+				key.ResetUsed()
+				key.AddUsed(used)
+			}
 		}
 	}
 
@@ -259,7 +331,7 @@ func (p *Provider) hashRequest(hashReq HashRequest, key *BuddyKey) (HashResponse
 	case http.StatusBadRequest, http.StatusNotFound:
 		return hresp, ErrBadRequest
 	case http.StatusUnauthorized:
-		key.Invalid = true
+		key.SetInvalid(true)
 		return hresp, ErrInvalidKey
 	case 429:
 		debug("Key passed limit: %s", key.Key)
@@ -317,8 +389,7 @@ func (p *Provider) Hash(authTicket, sessionData []byte, latitude, longitude, acc
 			}
 			break
 		}
-		key.Count--
-		key.Used--
+		key.AddUsed(-1)
 		debug("Failed to hash request: %s", err)
 		time.Sleep(1 * time.Second)
 	}

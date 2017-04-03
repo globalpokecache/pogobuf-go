@@ -73,29 +73,32 @@ func (c *RPC) Request(ctx context.Context, endpoint string, requestEnvelope *pro
 	}
 
 	if response.StatusCode != 200 {
-		return responseEnvelope, pogobuf.ErrServerUnexpectedResponse
+		return nil, pogobuf.ErrServerUnexpectedResponse
 	}
 
 	// Read the response
 	responseBytes, err := ioutil.ReadAll(response.Body)
 	if err != nil {
-		return responseEnvelope, raise("Could not decode response body")
+		return nil, raise("Could not decode response body")
 	}
 
-	proto.Unmarshal(responseBytes, responseEnvelope)
+	err = proto.Unmarshal(responseBytes, responseEnvelope)
+	if err != nil {
+		return nil, raise("Could not decode response body")
+	}
 
 	debugProto("ResponseEnvelope", responseEnvelope)
 
 	if responseEnvelope.StatusCode == protos.ResponseEnvelope_BAD_REQUEST {
-		return responseEnvelope, raise("Bad request")
+		return nil, raise("Bad request")
 	}
 
 	if responseEnvelope.StatusCode == protos.ResponseEnvelope_INVALID_AUTH_TOKEN {
-		return responseEnvelope, pogobuf.ErrAuthExpired
+		return nil, pogobuf.ErrAuthExpired
 	}
 
 	if responseEnvelope.StatusCode == protos.ResponseEnvelope_INVALID_PLATFORM_REQUEST {
-		return responseEnvelope, raise("Invalid Platform Request")
+		return nil, raise("Invalid Platform Request")
 	}
 
 	return responseEnvelope, nil
