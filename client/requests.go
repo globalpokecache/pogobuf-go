@@ -331,8 +331,8 @@ func (c *Instance) GetMapObjectsRequest(cellIDs []uint64, sinceTimestampMs []int
 	msg, err := proto.Marshal(&protos.GetMapObjectsMessage{
 		CellId:           cellIDs,
 		SinceTimestampMs: sinceTimestampMs,
-		Latitude:         c.player.Latitude,
-		Longitude:        c.player.Longitude,
+		Latitude:         c.player.Latitude(),
+		Longitude:        c.player.Longitude(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create GET_MAP_OBJECTS: %s", err)
@@ -492,8 +492,8 @@ func (c *Instance) EncounterRequest(eid uint64, spawnPoint string) (*protos.Requ
 	msg, err := proto.Marshal(&protos.EncounterMessage{
 		EncounterId:     eid,
 		SpawnPointId:    spawnPoint,
-		PlayerLatitude:  c.player.Latitude,
-		PlayerLongitude: c.player.Longitude,
+		PlayerLatitude:  c.player.Latitude(),
+		PlayerLongitude: c.player.Longitude(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("Failed to create ENCOUNTER: %s", err)
@@ -659,8 +659,8 @@ func (c *Instance) ReleaseMultiPokemon(ctx context.Context, pids []uint64) (*pro
 func (c *Instance) FortSearchRequest(fortid string, lat, lon float64) (*protos.Request, error) {
 	msg, err := proto.Marshal(&protos.FortSearchMessage{
 		FortId:          fortid,
-		PlayerLatitude:  c.player.Latitude,
-		PlayerLongitude: c.player.Longitude,
+		PlayerLatitude:  c.player.Latitude(),
+		PlayerLongitude: c.player.Longitude(),
 		FortLatitude:    lat,
 		FortLongitude:   lon,
 	})
