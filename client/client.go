@@ -5,14 +5,15 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"sync"
+	"time"
+
 	"github.com/globalpokecache/POGOProtos-go"
 	"github.com/globalpokecache/pogobuf-go"
 	"github.com/globalpokecache/pogobuf-go/auth"
 	"github.com/globalpokecache/pogobuf-go/hash"
 	"github.com/globalpokecache/pogobuf-go/helpers"
 	"github.com/golang/protobuf/proto"
-	"sync"
-	"time"
 )
 
 type Options struct {
@@ -66,11 +67,10 @@ type Instance struct {
 	mapSettings        protos.MapSettings
 	waitRequest        chan struct{}
 
-	locationFixSync     sync.Mutex
-	lastLocationCourse  float32
-	lastLocationFixTime uint64
-	lastLocationFix     *protos.Signature_LocationFix
-	locationFixes       []*protos.Signature_LocationFix
+	locationFixSync    sync.Mutex
+	lastLocationCourse float32
+	lastLocationFix    *protos.Signature_LocationFix
+	locationFixes      chan *protos.Signature_LocationFix
 
 	cancel func()
 }
@@ -352,9 +352,9 @@ func (c *Instance) Init(ctx context.Context) (*protos.GetPlayerResponse, *protos
 	c.ptr8 = DefaultPtr8
 	c.rpcID = 1
 	c.lehmerSeed = DefaultLehmerSeed
-	c.lastLocationFixTime = 0
 	c.inventoryTimestamp = 0
 	c.firstGetMap = true
+	c.locationFixes = make(chan *protos.Signature_LocationFix, 20)
 	c.startedTime = getTimestamp(time.Now()) - uint64(5000+randInt(800))
 
 	go c.locationFixer(ctx)
@@ -368,7 +368,7 @@ func (c *Instance) Init(ctx context.Context) (*protos.GetPlayerResponse, *protos
 }
 
 func (c *Instance) GetMap(ctx context.Context) (*protos.GetMapObjectsResponse, *protos.ResponseEnvelope, error) {
-	cells := helpers.GetCellsFromRadius(c.player.Latitude, c.player.Longitude, 640, 15)
+	cells := helpers.GetCellsFromRadius(c.player.Latitude(), c.player.Longitude(), 640, 15)
 	var response *protos.ResponseEnvelope
 
 	getMapReq, err := c.GetMapObjectsRequest(cells, make([]int64, len(cells)))

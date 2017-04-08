@@ -1,15 +1,15 @@
 package client
 
 import (
+	"context"
+	"math"
 	"time"
 
-	"context"
 	"github.com/globalpokecache/POGOProtos-go"
-	"math"
 )
 
 func (c *Instance) locationFixer(ctx context.Context) {
-	lastpos := []float64{c.player.Latitude, c.player.Longitude}
+	lastpos := []float64{c.player.Latitude(), c.player.Longitude()}
 	for {
 		select {
 		case <-ctx.Done():
@@ -19,12 +19,11 @@ func (c *Instance) locationFixer(ctx context.Context) {
 
 		t := getTimestamp(time.Now())
 
-		moving := (lastpos[0] != c.player.Latitude) || (lastpos[1] != c.player.Longitude)
-		c.player.Lock()
-		lastpos[0] = c.player.Latitude
-		lastpos[1] = c.player.Longitude
+		moving := (lastpos[0] != c.player.Latitude()) || (lastpos[1] != c.player.Longitude())
+		lastpos[0] = c.player.Latitude()
+		lastpos[1] = c.player.Longitude()
 		if c.lastLocationFix == nil || moving || randFloat() > 0.85 {
-			c.player.Accuracy = []float64{5, 5, 5, 5, 10, 10, 10, 30, 30, 50, 65, math.Floor(randFloat()*(80-66)) + 66}[randInt(12)]
+			c.player.SetAccuracy([]float64{5, 5, 5, 5, 10, 10, 10, 30, 30, 50, 65, math.Floor(randFloat()*(80-66)) + 66}[randInt(12)])
 
 			junk := (randFloat() < 0.03)
 			fix := &protos.Signature_LocationFix{
@@ -40,10 +39,10 @@ func (c *Instance) locationFixer(ctx context.Context) {
 			}
 
 			if !junk {
-				fix.Latitude = float32(c.player.Latitude)
-				fix.Longitude = float32(c.player.Longitude)
-				if c.player.Altitude > 0 {
-					fix.Altitude = float32(c.player.Altitude)
+				fix.Latitude = float32(c.player.Latitude())
+				fix.Longitude = float32(c.player.Longitude())
+				if c.player.Altitude() > 0 {
+					fix.Altitude = float32(c.player.Altitude())
 				} else {
 					fix.Altitude = float32(randTriang(300, 400, 350))
 				}
@@ -55,26 +54,31 @@ func (c *Instance) locationFixer(ctx context.Context) {
 				c.lastLocationCourse = fix.Course
 			}
 
-			if c.player.Accuracy >= 65 {
+			if c.player.Accuracy() >= 65 {
 				fix.VerticalAccuracy = float32(randTriang(35, 100, 65))
-				fix.HorizontalAccuracy = float32([]float64{c.player.Accuracy, 65, 65, 66 + (randFloat() * 14), 200}[randInt(5)])
-			} else if c.player.Accuracy > 10 {
-				fix.HorizontalAccuracy = float32(c.player.Accuracy)
+				fix.HorizontalAccuracy = float32([]float64{c.player.Accuracy(), 65, 65, 66 + (randFloat() * 14), 200}[randInt(5)])
+			} else if c.player.Accuracy() > 10 {
+				fix.HorizontalAccuracy = float32(c.player.Accuracy())
 				fix.VerticalAccuracy = float32([]float64{32, 48, 48, 64, 64, 96, 128}[randInt(7)])
 			} else {
-				fix.HorizontalAccuracy = float32(c.player.Accuracy)
+				fix.HorizontalAccuracy = float32(c.player.Accuracy())
 				fix.VerticalAccuracy = float32([]float64{3, 4, 6, 6, 8, 12, 24}[randInt(7)])
 			}
 
 			fix.TimestampSnapshot = t - c.startedTime + uint64(-100+randInt(100))
-			c.locationFixSync.Lock()
-			c.locationFixes = append(c.locationFixes, fix)
-			c.lastLocationFix = fix
-			c.lastLocationFixTime = t
-			c.locationFixSync.Unlock()
-		}
-		c.player.Unlock()
 
-		time.Sleep(900 * time.Millisecond)
+			for done := false; !done; {
+				select {
+				case c.locationFixes <- fix:
+					done = true
+				default:
+					c.locationFixSync.Lock()
+					<-c.locationFixes
+					c.locationFixSync.Unlock()
+				}
+			}
+		}
+
+		randSleep(900, 950)
 	}
 }

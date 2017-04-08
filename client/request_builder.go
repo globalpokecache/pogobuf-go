@@ -12,7 +12,7 @@ import (
 )
 
 const defaultURL = "https://pgorelease.nianticlabs.com/plfe/rpc"
-const downloadSettingsHash = "7b9c5056799a2c5c7d48a62c497736cbcf8c4acb"
+const downloadSettingsHash = "f43e9e403f233d4541feda9816e9d6085bccb087"
 
 func (c *Instance) getServerURL() string {
 	var url string
@@ -72,17 +72,15 @@ func (c *Instance) call(ctx context.Context, requests []*protos.Request, prs []*
 	var respErr error
 	var responseEnvelope *protos.ResponseEnvelope
 
-	c.player.Lock()
-	lat, long := c.player.Latitude, c.player.Longitude
+	lat, long := c.player.Latitude(), c.player.Longitude()
 
-	var randAccu = c.player.Accuracy
+	var randAccu = c.player.Accuracy()
 	if randAccu == 0 {
 		accuSeed := make([]int, len(randAccuSeed))
 		copy(accuSeed, randAccuSeed)
 		accuSeed = append(accuSeed, randInt(80-66)+66)
 		randAccu = float64(accuSeed[randInt(len(accuSeed))])
 	}
-	c.player.Unlock()
 
 	requestEnvelope := &protos.RequestEnvelope{
 		RequestId:  uint64(c.getRequestId()),
@@ -106,7 +104,7 @@ func (c *Instance) call(ctx context.Context, requests []*protos.Request, prs []*
 		}
 	}
 
-	var locFix []*protos.Signature_LocationFix
+	var locFix = []*protos.Signature_LocationFix{}
 	var lastLocFixTime uint64
 
 	var ticket []byte
@@ -137,15 +135,23 @@ func (c *Instance) call(ctx context.Context, requests []*protos.Request, prs []*
 		}
 	}
 
-	c.locationFixSync.Lock()
-	lastLocFixTime = c.lastLocationFixTime
-
-	if len(c.locationFixes) > 0 {
-		locFix = c.locationFixes
-		c.locationFixes = []*protos.Signature_LocationFix{c.lastLocationFix}
+	for done := false; !done; {
+		select {
+		case l := <-c.locationFixes:
+			locFix = append(locFix, l)
+			c.locationFixSync.Lock()
+			c.lastLocationFix = l
+			c.locationFixSync.Unlock()
+			lastLocFixTime = l.TimestampSnapshot
+		default:
+			done = true
+		}
 	}
 
-	c.locationFixSync.Unlock()
+	if len(locFix) == 0 && c.lastLocationFix != nil {
+		locFix = append(locFix, c.lastLocationFix)
+		lastLocFixTime = c.lastLocationFix.TimestampSnapshot
+	}
 
 	for i := 0; i <= c.options.MaxTries; i++ {
 		time.Sleep(time.Duration(i*300) * time.Millisecond)
@@ -154,24 +160,10 @@ func (c *Instance) call(ctx context.Context, requests []*protos.Request, prs []*
 
 		sinceStart := (t - c.startedTime)
 
-		c.locationFixSync.Lock()
-		lastLocFixTime = c.lastLocationFixTime
-
-		if len(c.locationFixes) > 0 {
-			locFix = c.locationFixes
-			c.locationFixes = []*protos.Signature_LocationFix{}
-		} else {
-			if c.lastLocationFix != nil {
-				locFix = []*protos.Signature_LocationFix{c.lastLocationFix}
-			} else {
-				locFix = nil
-			}
-		}
-
 		var sensorTS uint64
-		if c.lastLocationFixTime > 0 {
-			requestEnvelope.MsSinceLastLocationfix = int64(t - lastLocFixTime)
-			sensorTS = lastLocFixTime - c.startedTime + uint64(-800+randInt(800))
+		if c.lastLocationFix != nil {
+			requestEnvelope.MsSinceLastLocationfix = int64(t - (c.startedTime + lastLocFixTime))
+			sensorTS = lastLocFixTime - uint64(-800+randInt(800))
 		} else {
 			requestEnvelope.MsSinceLastLocationfix = -1
 			sensorTS = sinceStart - uint64(100+randInt(100))
@@ -180,7 +172,6 @@ func (c *Instance) call(ctx context.Context, requests []*protos.Request, prs []*
 		requestEnvelope.Longitude = long
 		requestEnvelope.Latitude = lat
 		requestEnvelope.Accuracy = randAccu
-		c.locationFixSync.Unlock()
 
 		locHash1, locHash2, requestHash, err := c.options.HashProvider.Hash(
 			ticket,
