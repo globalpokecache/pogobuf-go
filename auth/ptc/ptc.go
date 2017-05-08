@@ -4,12 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
 	"strings"
 
+	"github.com/globalpokecache/pogobuf-go"
 	"golang.org/x/net/context/ctxhttp"
 )
 
@@ -31,15 +33,20 @@ type loginRequest struct {
 // Provider contains data about and manages the session with the Pokémon Trainer's Club
 type Provider struct {
 	username, password string
+	debug              bool
 }
 
 // NewProvider constructs a Pokémon Trainer's Club auth provider instance
 func NewProvider(username, password string) *Provider {
-	return &Provider{username, password}
+	return &Provider{username, password, false}
 }
 
 func (p *Provider) Type() string {
 	return "ptc"
+}
+
+func (p *Provider) SetDebug(d bool) {
+	p.debug = d
 }
 
 func (p *Provider) GetUsername() string {
@@ -58,17 +65,25 @@ func (p *Provider) Login(ctx context.Context) (string, error) {
 	}
 
 	req1, _ := http.NewRequest("GET", loginURL, nil)
-	req1.Header.Set("User-Agent", "pokemongo/1 CFNetwork/808.2.16 Darwin/16.3.0")
+	req1.Header.Set("User-Agent", "niantic")
 
+	p.DebugMsg("Requesting: %s", loginURL)
 	resp1, err1 := ctxhttp.Do(ctx, httpClient, req1)
 	if err1 != nil {
-		return "", errors.New("Could not start login process, the website might be down")
+		return "", errors.New("Failed to connect to login servers... Probably server issues")
 	}
 
 	defer resp1.Body.Close()
-	body1, _ := ioutil.ReadAll(resp1.Body)
+	body1, err := ioutil.ReadAll(resp1.Body)
+	if err != nil {
+		return "", errors.New("Failed to connect to login servers... Probably server issues")
+	}
 	var loginRespBody loginRequest
-	json.Unmarshal(body1, &loginRespBody)
+	err = json.Unmarshal(body1, &loginRespBody)
+	if err != nil {
+		return "", errors.New("Failed to connect to login servers... Probably server issues")
+	}
+	p.Debug(body1)
 	resp1.Body.Close()
 
 	loginForm := url.Values{}
@@ -81,9 +96,10 @@ func (p *Provider) Login(ctx context.Context) (string, error) {
 	loginFormData := strings.NewReader(loginForm.Encode())
 
 	req2, _ := http.NewRequest("POST", loginURL, loginFormData)
-	req2.Header.Set("User-Agent", "pokemongo/1 CFNetwork/808.2.16 Darwin/16.3.0")
+	req2.Header.Set("User-Agent", "niantic")
 	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
+	p.DebugMsg("Requesting: %s", loginURL)
 	resp2, err2 := ctxhttp.Do(ctx, httpClient, req2)
 	if _, ok2 := err2.(*url.Error); !ok2 {
 		if resp2 != nil && resp2.Body != nil {
@@ -91,11 +107,11 @@ func (p *Provider) Login(ctx context.Context) (string, error) {
 			body2, _ := ioutil.ReadAll(resp2.Body)
 			var respBody loginRequest
 			json.Unmarshal(body2, &respBody)
-			resp2.Body.Close()
-
-			if len(respBody.Errors) > 0 {
-				return "", errors.New(respBody.Errors[0])
+			if strings.Contains(respBody.Errors[0], "unexpected error") {
+				return "", pogobuf.ErrAccountBanned
 			}
+			p.Debug(respBody)
+			return "", errors.New("Failed to connect to login servers... Probably server issues")
 		}
 
 		return "", errors.New("Could not request authorization")
@@ -106,6 +122,7 @@ func (p *Provider) Login(ctx context.Context) (string, error) {
 	}
 	location, _ := url.Parse(resp2.Header.Get("Location"))
 	ticket := location.Query().Get("ticket")
+	p.Debug(location)
 
 	authorizeForm := url.Values{}
 	authorizeForm.Set("client_id", clientID)
@@ -117,16 +134,45 @@ func (p *Provider) Login(ctx context.Context) (string, error) {
 	authorizeFormData := strings.NewReader(authorizeForm.Encode())
 
 	req3, _ := http.NewRequest("POST", authorizeURL, authorizeFormData)
-	req3.Header.Set("User-Agent", "pokemongo/1 CFNetwork/808.2.16 Darwin/16.3.0")
+	req3.Header.Set("User-Agent", "niantic")
 	req3.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
+	p.DebugMsg("Requesting: %s", authorizeURL)
+	p.Debug(authorizeForm)
 	resp3, err3 := ctxhttp.Do(ctx, httpClient, req3)
 	if err3 != nil {
-		return "", errors.New("Could not authorize code")
+		return "", errors.New("Failed to connect to login servers...")
+	}
+
+	if resp3 == nil || err3 != nil {
+		return "", errors.New("Failed to connect to login servers...")
+	}
+
+	if resp3.StatusCode != http.StatusOK {
+		return "", errors.New("Failed to connect to login servers... Probably server issues")
 	}
 
 	b, _ := ioutil.ReadAll(resp3.Body)
-	query, _ := url.ParseQuery(string(b))
+	query, err := url.ParseQuery(string(b))
+
+	if err != nil {
+		return "", errors.New("Failed to connect to login servers... Probably server issues")
+	}
+
+	p.Debug(query)
 
 	return query.Get("access_token"), nil
+}
+
+func (p *Provider) Debug(m interface{}) {
+	if p.debug && m != nil {
+		b, _ := json.MarshalIndent(m, "", "\t")
+		p.DebugMsg("%s", string(b))
+	}
+}
+
+func (p *Provider) DebugMsg(format string, a ...interface{}) {
+	if p.debug {
+		fmt.Printf(fmt.Sprintf("(PTC) %s\n", format), a...)
+	}
 }

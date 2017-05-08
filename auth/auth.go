@@ -12,6 +12,7 @@ type Provider interface {
 	Login(ctx context.Context) (authToken string, err error)
 	Type() string
 	GetUsername() string
+	SetDebug(bool)
 }
 
 // NewProvider creates a new provider based on the provider identifier

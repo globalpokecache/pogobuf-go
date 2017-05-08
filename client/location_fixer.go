@@ -72,9 +72,7 @@ func (c *Instance) locationFixer(ctx context.Context) {
 				case c.locationFixes <- fix:
 					done = true
 				default:
-					c.locationFixSync.Lock()
 					<-c.locationFixes
-					c.locationFixSync.Unlock()
 				}
 			}
 		}

@@ -14,6 +14,10 @@ import (
 const defaultURL = "https://pgorelease.nianticlabs.com/plfe/rpc"
 const downloadSettingsHash = "f43e9e403f233d4541feda9816e9d6085bccb087"
 
+type SignatureInfo struct {
+	DeviceInfo *protos.Signature_DeviceInfo
+}
+
 func (c *Instance) getServerURL() string {
 	var url string
 	if c.serverURL != "" {
@@ -282,17 +286,17 @@ func (c *Instance) call(ctx context.Context, requests []*protos.Request, prs []*
 			continue
 		}
 
-		// for _, pr := range responseEnvelope.PlatformReturns {
-		// 	if pr.Type == protos.PlatformRequestType_UNKNOWN_PTR_8 {
-		// 		var ptr8 protos.UnknownPtr8Response
-		// 		err := proto.Unmarshal(pr.Response, &ptr8)
-		// 		if err == nil {
-		// 			if ptr8.Message != "" {
-		// 				c.ptr8 = ptr8.Message
-		// 			}
-		// 		}
-		// 	}
-		// }
+		for _, pr := range responseEnvelope.PlatformReturns {
+			if pr.Type == protos.PlatformRequestType_UNKNOWN_PTR_8 {
+				var ptr8 protos.UnknownPtr8Response
+				err := proto.Unmarshal(pr.Response, &ptr8)
+				if err == nil {
+					if ptr8.Message != "" {
+						c.ptr8 = ptr8.Message
+					}
+				}
+			}
+		}
 
 		if responseEnvelope.ApiUrl != "" {
 			c.setURL(responseEnvelope.ApiUrl)
@@ -329,7 +333,15 @@ func (c *Instance) CallWithPlatformRequests(ctx context.Context, requests []*pro
 }
 
 func (c *Instance) shouldAddPtr8(requests []*protos.Request) bool {
-	if len(requests) == 1 && requests[0].RequestType == protos.RequestType_GET_PLAYER {
+	r := randFloat()
+	if len(requests) == 0 {
+		return false
+	}
+	rtype := requests[0].RequestType
+	if c.ptr8 != "" &&
+		((rtype == protos.RequestType_GET_PLAYER || rtype == protos.RequestType_GET_MAP_OBJECTS) && r > 0.5) &&
+		(rtype == protos.RequestType_ENCOUNTER && r > 0.9) ||
+		r > 0.97 {
 		return true
 	}
 

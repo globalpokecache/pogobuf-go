@@ -44,7 +44,7 @@ var (
 		MinRequestInterval:   500 * time.Millisecond,
 	}
 
-	DefaultPtr8             = "90f6a704505bccac73cec99b07794993e6fd5a12"
+	DefaultPtr8             = ""
 	DefaultLehmerSeed int64 = 16807
 )
 
@@ -342,7 +342,9 @@ func (c *Instance) Init(ctx context.Context) (*protos.GetPlayerResponse, *protos
 	ctx, cancel := context.WithCancel(ctx)
 	c.cancel = cancel
 
-	c.login(ctx)
+	if err := c.login(ctx); err != nil {
+		return nil, nil, err
+	}
 
 	err := c.newSessionHash()
 	if err != nil {
@@ -359,6 +361,8 @@ func (c *Instance) Init(ctx context.Context) (*protos.GetPlayerResponse, *protos
 
 	go c.locationFixer(ctx)
 	go c.requestThrottle(ctx)
+
+	randSleep(500, 800)
 
 	if c.options.SimulateApp {
 		return c.simulateAppLogin(ctx)
